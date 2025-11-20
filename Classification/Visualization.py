@@ -1,4 +1,6 @@
 import torch
+import cv2
+import numpy as np
 import matplotlib.pyplot as plt
 
 def plot_training_history(history, save_path = "Loss.png"):
@@ -79,73 +81,60 @@ def plot_misclassified_images(model, dataloader, classes, device, max_images=20,
     print("Saved figure to: ", save_path)
 
 #TODO: Saliency map is not working yet
-def plot_saliency_maps(model, dataloader, device, classes=None, max_images=5):
-    """
-    Computes and plots saliency maps for some images.
-
-    Args:
-        model: Trained PyTorch model.
-        dataloader: DataLoader to draw images from.
-        device: "cuda" or "cpu".
-        classes: Optional list of class names.
-        max_images: How many images to visualize.
-    """
-
-    images_shown = 0
+def plot_saliency_maps(model, dataloader, device, classes, alpha=0.4):
 
     for images, labels in dataloader:
-        images, labels = images.to(device), labels.to(device)
-        images.requires_grad = True  # ✨ allow gradients w.r.t. pixels
+        # Take one image
+        image = images[0:1].to(device)         # (1,3,H,W)
+        img_np = images[0].permute(1,2,0).cpu().numpy()  # for plotting
 
-        outputs = model(images)
-        _, preds = outputs.max(1)
+        image.requires_grad = True
 
-        for idx in range(images.size(0)):
-            if images_shown >= max_images:
-                return
+        # Forward pass
+        output = model(image)
+        pred_class = output.argmax(dim=1).item()
 
-            img = images[idx:idx+1]          # keep batch dimension
-            label = labels[idx]
-            pred = preds[idx]
+        # Backprop on target score
+        score = output[0, pred_class]
+        model.zero_grad()
+        score.backward()
 
-            model.zero_grad()
+        # Saliency: (1, H, W)
+        saliency = image.grad.abs().max(dim=1)[0].squeeze().cpu().numpy()
 
-            # Loss for the predicted class (common choice)
-            score = outputs[idx, pred]
-            score.backward(retain_graph=True)
+        # Normalize saliency to [0,1]
+        saliency_norm = (saliency - saliency.min()) / (saliency.max() - saliency.min() + 1e-8)
 
-            # saliency = max gradient across channels
-            saliency = img.grad.data.abs().max(dim=1)[0].squeeze().cpu()
+        # Convert to heatmap with cv2
+        saliency_uint8 = np.uint8(saliency_norm * 255)
+        heatmap = cv2.applyColorMap(saliency_uint8, cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
 
-            # Normalize saliency for display
-            saliency = (saliency - saliency.min()) / (saliency.max() - saliency.min())
+        # Overlay heatmap on original image
+        img_uint8 = np.uint8(img_np * 255)
+        overlay = cv2.addWeighted(img_uint8, 1 - alpha, heatmap, alpha, 0)
 
-            # Convert image for plotting
-            img_np = img.detach().cpu().squeeze().permute(1, 2, 0).numpy()
-            img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
+        # Plot side-by-side
+        plt.figure(figsize=(12,5))
 
-            # --- Plot ---
-            plt.figure(figsize=(10, 4))
+        plt.subplot(1,3,1)
+        plt.imshow(img_np)
+        plt.title(f"Image\nPredicted: {classes[pred_class]}")
+        plt.axis("off")
 
-            plt.subplot(1, 2, 1)
-            plt.imshow(img_np)
-            title = f"Pred: {pred.item()}"
-            if classes is not None:
-                title = f"Pred: {classes[pred]} | True: {classes[label]}"
-            plt.title(title)
-            plt.axis("off")
+        plt.subplot(1,3,2)
+        plt.imshow(saliency_norm, cmap='hot')
+        plt.title("Raw Saliency Map")
+        plt.axis("off")
 
-            plt.subplot(1, 2, 2)
-            plt.imshow(saliency, cmap="hot")
-            plt.title("Saliency Map")
-            plt.axis("off")
+        plt.subplot(1,3,3)
+        plt.imshow(overlay)
+        plt.title("Overlay (Heatmap + Image)")
+        plt.axis("off")
 
-            plt.tight_layout()
-            plt.savefig(f"Saliency_Map_{idx}", dpi=200)
-            plt.close
-            print("Saved figure to: ", f"Saliency_Map_{idx}")
+        save_path = "Saliency_overlay.png"
+        plt.savefig(save_path, dpi=200, bbox_inches="tight")
+        plt.close()
+        print("Saved figure to:", save_path)
 
-            images_shown += 1
-
-        if images_shown >= max_images:
-            break
+        break    # remove to process more images
