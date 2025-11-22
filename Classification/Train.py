@@ -1,7 +1,10 @@
 import torch
 from torch import nn
 from torch.optim import Adam
+import joblib
 from tqdm.auto import tqdm
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
 
 from Model import ResNet
 from Data import get_dataloaders
@@ -84,14 +87,85 @@ def train_model(model, train_loader, val_loader, num_epochs=10, lr=1e-4, weight_
 
     return model, history
 
+def train_SVM(train_loader, val_loader, device='cpu'):
+    # --- Prepare training data ---
+    X_train = []
+    y_train = []
+    for imgs, labels in train_loader:
+        imgs = imgs.to(device)
+        # Flatten each image
+        imgs_flat = imgs.view(imgs.size(0), -1)
+        X_train.append(imgs_flat.cpu())
+        y_train.append(labels.cpu())
+    X_train = torch.cat(X_train).numpy()
+    y_train = torch.cat(y_train).numpy()
+
+    # --- Prepare validation data ---
+    X_val = []
+    y_val = []
+    for imgs, labels in val_loader:
+        imgs = imgs.to(device)
+        imgs_flat = imgs.view(imgs.size(0), -1)
+        X_val.append(imgs_flat.cpu())
+        y_val.append(labels.cpu())
+    X_val = torch.cat(X_val).numpy()
+    y_val = torch.cat(y_val).numpy()
+
+    # --- Fit SVM ---
+    clf = SVC()
+    print("Fitting SVM")
+    clf.fit(X_train, y_train)
+
+    # --- Evaluate ---
+    y_pred = clf.predict(X_val)
+    acc = accuracy_score(y_val, y_pred)
+    print(f"Validation Accuracy: {acc:.4f}")
+    print("Classification Report:")
+    print(classification_report(y_val, y_pred))
+
+    return clf
+    
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     path = r"C:\Users\leona\fiftyone\coco-2017\dataset"
-    Train = True
+    Train = False
 
     model = ResNet(pretrained=True, finetune_all=True).to(device)
-    train_dataloader, val_dataloader, classes = get_dataloaders(path=path, batch_size=32)
+    train_dataloader, val_dataloader, classes = get_dataloaders(path=path, batch_size=32, apply_pca=False)
+
+    # if Train:
+    #     SVM = train_SVM(train_dataloader, val_dataloader, device=device)
+    #     joblib.dump(SVM, "svm_model.pkl")
+    # else:
+    #     SVM = joblib.load("svm_model.pkl")
+
+    """Without PCA"""
+    # Validation Accuracy: 0.7058
+    # Classification Report:
+    #                      precision  recall   f1-score   support
+
+    #                0       0.60      0.58      0.59       141
+    #                1       0.79      0.72      0.76       173
+    #                2       0.71      0.78      0.74       189
+
+    #         accuracy                           0.71       503
+    #        macro avg       0.70      0.70      0.70       503
+    #     weighted avg       0.71      0.71      0.71       503
+
+    """With PCA"""
+    # Validation Accuracy: 0.6998
+    # Classification Report:
+    #               precision    recall  f1-score   support
+
+    #            0       0.60      0.56      0.58       140
+    #            1       0.75      0.76      0.75       159
+    #            2       0.73      0.75      0.74       204
+
+    #     accuracy                           0.70       503
+    #    macro avg       0.69      0.69      0.69       503
+    # weighted avg       0.70      0.70      0.70       503
+
 
     if Train:
         model, history = train_model(model=model, train_loader=train_dataloader, val_loader=val_dataloader, 
@@ -110,6 +184,6 @@ if __name__ == "__main__":
     model.eval()
 
     #Visualize
-    plot_training_history(history)
-    plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
+    # plot_training_history(history)
+    # plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
     plot_saliency_maps(model, val_dataloader, device=device, classes=classes)
