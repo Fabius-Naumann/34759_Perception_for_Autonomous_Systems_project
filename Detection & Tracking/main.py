@@ -1,7 +1,6 @@
 # main.py
 import cv2
 import numpy as np
-
 from detection import detect_moving_objects
 from tracking import TrackManager
 
@@ -10,16 +9,17 @@ video_path = "./Detection & Tracking/Sequence 1.mp4" # Run from project root
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
 if not ret:
-    raise RuntimeError("Could not read first frame, Make sure to run the code from the repository root.")
+    raise RuntimeError("Cannot read first frame")
 
 gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
 h, w = frame1.shape[:2]
 fps = cap.get(cv2.CAP_PROP_FPS)
 
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
-out_boxes = cv2.VideoWriter("people_boxes.avi", fourcc, fps, (w, h))
+out_boxes = cv2.VideoWriter("./Detection & Tracking/out/people_boxes.avi", fourcc, fps, (w, h))
+out_flow  = cv2.VideoWriter("./Detection & Tracking/out/people_flow.avi",  fourcc, fps, (w, h))
 
-# ---------------- Kalman Filter Constants ----------------
+# ---------------- Kalman Constants ----------------
 dt = 1.0 / fps
 F = np.eye(6, dtype=np.float32)
 F[0, 2] = dt
@@ -36,11 +36,10 @@ H[1, 1] = 1
 R = np.eye(2, dtype=np.float32) * 0.1
 u = np.zeros((6, 1), dtype=np.float32)
 
-# ---------------- Track Manager ----------------
+# ---------------- Tracker ----------------
 tracker = TrackManager(max_invisible=15, dist_thresh=80)
 
 # ---------------- Main Loop ----------------
-frame_count = 0
 while True:
     ret, frame2 = cap.read()
     if not ret:
@@ -48,7 +47,7 @@ while True:
 
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
-    # optical flow
+    # Optical flow
     flow = cv2.calcOpticalFlowFarneback(
         gray1, gray2, None,
         0.5, 3, 20, 5, 5, 1.2, 0
@@ -59,34 +58,61 @@ while True:
 
     # -------- Tracking --------
     tracker.predict_tracks(F, u, Q)
-    assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
-    tracker.create_new_tracks(detections, assigned_dets)
-    tracker.delete_old_tracks()
+    # assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
+    # tracker.create_new_tracks(detections, assigned_dets)
+    # tracker.delete_old_tracks()
 
-    # -------- Draw results --------
-    output = frame1.copy()
+    # STEP 1: match to confirmed tracks
+    assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
+
+    # STEP 2: match remaining detections to pending tracks
+    assigned_pending = tracker.associate_pending(detections, H, R, assigned_dets)
+
+    # STEP 3: create new pending tracks for completely new detections
+    tracker.create_pending_tracks(detections, assigned_dets)
+
+    # STEP 4: promote tracks that survived enough frames
+    tracker.promote_tracks()
+
+    # STEP 5: remove stale confirmed or pending tracks
+    tracker.remove_stale()
+
+
+    # -------- Draw optical flow visualization --------
+    flow_vis = frame1.copy()
+    step = 8
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            fx, fy = flow[y, x]
+            if np.hypot(fx, fy) < 2:
+                continue
+            end_point = (int(x + fx), int(y + fy))
+            cv2.arrowedLine(flow_vis, (x, y), end_point, (0, 0, 255), 1, tipLength=0.3)
+
+    out_flow.write(flow_vis)
+
+    # -------- Draw tracking results --------
+    out_frame = frame1.copy()
     for tr in tracker.tracks:
         cx = int(tr["x"][0, 0])
         cy = int(tr["x"][1, 0])
         x_b, y_b, w_b, h_b = tr["bbox"]
         color = tr["color"]
 
-        cv2.rectangle(output, (x_b, y_b), (x_b + w_b, y_b + h_b), color, 2)
-        cv2.circle(output, (cx, cy), 4, (0, 0, 255), -1)
-        cv2.putText(
-            output, f"ID {tr['id']}",
-            (x_b, y_b - 5),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            color, 2
-        )
+        cv2.rectangle(out_frame, (x_b, y_b), (x_b + w_b, y_b + h_b), color, 2)
+        cv2.circle(out_frame, (cx, cy), 4, (0, 0, 255), -1)
+        cv2.putText(out_frame, f"ID {tr['id']}", (x_b, y_b - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-    out_boxes.write(output)
-
+    out_boxes.write(out_frame)
+    
+    # Prepare next frame
     gray1 = gray2.copy()
     frame1 = frame2.copy()
-    frame_count += 1
 
+    # Print logger every 10 frames
 cap.release()
 out_boxes.release()
-print("Finished. Saved people_boxes.avi")
+out_flow.release()
+
+print("Saved people_boxes.avi and people_flow.avi")

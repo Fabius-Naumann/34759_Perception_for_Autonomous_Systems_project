@@ -4,18 +4,16 @@ import numpy as np
 
 def detect_moving_objects(flow, frame, min_area=800):
     """
-    Returns a list of detections:
-    [
-      {cx, cy, x, y, w, h},
-      ...
-    ]
+    Returns
+      detections: [{cx, cy, x, y, w, h}, ...]
+      movement_mask: binary mask of moving pixels
     """
 
     h, w = frame.shape[:2]
 
-    # Magnitude threshold (motion)
+    # Magnitude of flow
     mag = np.linalg.norm(flow, axis=2)
-    movement_mask = (mag > 5.0).astype(np.uint8)  # more strict
+    movement_mask = (mag > 5.0).astype(np.uint8)
 
     # Morphological cleaning
     kernel_open = np.ones((5, 5), np.uint8)
@@ -27,8 +25,9 @@ def detect_moving_objects(flow, frame, min_area=800):
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_clean)
 
     detections = []
-    for label in range(1, num_labels):  # skip background
+    for label in range(1, num_labels):
         x_b, y_b, w_b, h_b, area = stats[label]
+
         if area < min_area:
             continue
         if w_b < 20 or h_b < 40:
