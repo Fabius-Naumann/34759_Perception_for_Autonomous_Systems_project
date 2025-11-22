@@ -111,21 +111,28 @@ while True:
             cv2.arrowedLine(flow_vis, (x, y), end_point, (0, 0, 255), 1, tipLength=0.3)
 
     out_flow.write(flow_vis)
-
     # -------- Draw tracking results --------
     out_frame = frame1.copy()
+
+    # Yellow dots = detections
+    for det in detections:
+        cx_d, cy_d = int(det["cx"]), int(det["cy"])
+        cv2.circle(out_frame, (cx_d, cy_d), 4, (0, 255, 255), -1)
+
+    # Red circles = tracked objects
     for tr in tracker.tracks:
         cx = int(tr["x"][0, 0])
         cy = int(tr["x"][1, 0])
-        x_b, y_b, w_b, h_b = tr["bbox"]
-        color = tr["color"]
 
-        cv2.rectangle(out_frame, (x_b, y_b), (x_b + w_b, y_b + h_b), color, 2)
-        cv2.circle(out_frame, (cx, cy), 4, (0, 0, 255), -1)
-        cv2.putText(out_frame, f"ID {tr['id']}", (x_b, y_b - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        # Big red circle
+        cv2.circle(out_frame, (cx, cy), 10, (0, 0, 255), 2)
+
+        # Optional: label with ID
+        cv2.putText(out_frame, f"{tr['id']}", (cx + 12, cy + 12),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
     out_boxes.write(out_frame)
+
 
     # Prepare next frame
     gray1 = gray2.copy()
