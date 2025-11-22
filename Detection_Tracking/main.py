@@ -1,23 +1,41 @@
-# main.py
+import os
 import cv2
 import numpy as np
 from detection import detect_moving_objects
 from tracking import TrackManager
 
 # ---------------- Video Setup ----------------
-video_path = "./Detection & Tracking/Sequence 1.mp4" # Run from project root
+video_path = "./Detection_Tracking/Sequence 1.mp4"  # Run from project root
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
 if not ret:
-    raise RuntimeError("Cannot read first frame")
+    raise RuntimeError(f"Cannot read first frame from {video_path}")
 
 gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
 h, w = frame1.shape[:2]
+
 fps = cap.get(cv2.CAP_PROP_FPS)
+if fps <= 0 or np.isnan(fps):
+    # Fallback FPS if OpenCV fails to read it
+    fps = 30.0
+    print("Warning: FPS from video was invalid. Using fallback fps = 30.0")
+
+# Make sure output directory exists
+out_dir = "./Detection_Tracking/out"
+os.makedirs(out_dir, exist_ok=True)
 
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
-out_boxes = cv2.VideoWriter("./Detection & Tracking/out/people_boxes.avi", fourcc, fps, (w, h))
-out_flow  = cv2.VideoWriter("./Detection & Tracking/out/people_flow.avi",  fourcc, fps, (w, h))
+
+out_boxes_path = os.path.join(out_dir, "people_boxes.avi")
+out_flow_path  = os.path.join(out_dir, "people_flow.avi")
+
+out_boxes = cv2.VideoWriter(out_boxes_path, fourcc, fps, (w, h))
+out_flow  = cv2.VideoWriter(out_flow_path,  fourcc, fps, (w, h))
+
+if not out_boxes.isOpened():
+    raise RuntimeError(f"Failed to open VideoWriter for {out_boxes_path}")
+if not out_flow.isOpened():
+    raise RuntimeError(f"Failed to open VideoWriter for {out_flow_path}")
 
 # ---------------- Kalman Constants ----------------
 dt = 1.0 / fps
@@ -40,10 +58,17 @@ u = np.zeros((6, 1), dtype=np.float32)
 tracker = TrackManager(max_invisible=15, dist_thresh=80)
 
 # ---------------- Main Loop ----------------
+frame_count = 0
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 while True:
     ret, frame2 = cap.read()
     if not ret:
         break
+
+    frame_count += 1
+    if frame_count % 10 == 0:
+        print(f"Processed {frame_count} / {total_frames} frames")
+
 
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
@@ -58,9 +83,6 @@ while True:
 
     # -------- Tracking --------
     tracker.predict_tracks(F, u, Q)
-    # assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
-    # tracker.create_new_tracks(detections, assigned_dets)
-    # tracker.delete_old_tracks()
 
     # STEP 1: match to confirmed tracks
     assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
@@ -76,7 +98,6 @@ while True:
 
     # STEP 5: remove stale confirmed or pending tracks
     tracker.remove_stale()
-
 
     # -------- Draw optical flow visualization --------
     flow_vis = frame1.copy()
@@ -105,12 +126,11 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     out_boxes.write(out_frame)
-    
+
     # Prepare next frame
     gray1 = gray2.copy()
     frame1 = frame2.copy()
 
-    # Print logger every 10 frames
 cap.release()
 out_boxes.release()
 out_flow.release()

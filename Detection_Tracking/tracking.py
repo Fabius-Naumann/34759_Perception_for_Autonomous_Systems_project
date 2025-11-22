@@ -108,8 +108,9 @@ class TrackManager:
     #      ASSOCIATE detections to PENDING (unconfirmed) tracks
     # ---------------------------------------------------------
     def associate_pending(self, detections, H, R, assigned_dets):
-        """Match new detections to pending tracks to increase confirm count."""
-        if len(self.pending_tracks) == 0:
+
+        # Handle cases with no pending tracks or no detections
+        if len(self.pending_tracks) == 0 or len(detections) == 0:
             return set()
 
         pending_points = np.array(
@@ -134,10 +135,10 @@ class TrackManager:
 
             det = detections[d_idx]
             Z = np.array([[det["cx"]], [det["cy"]]], dtype=np.float32)
+
             self.pending_tracks[p_idx]["x"], self.pending_tracks[p_idx]["P"] = kf_update(
                 self.pending_tracks[p_idx]["x"], self.pending_tracks[p_idx]["P"], Z, H, R
             )
-
             self.pending_tracks[p_idx]["bbox"] = (
                 det["x"], det["y"], det["w"], det["h"]
             )
@@ -151,6 +152,7 @@ class TrackManager:
             distances[:, d_idx] = np.inf
 
         return assigned_pending
+
 
     # ---------------------------------------------------------
     #       CREATE pending tracks for unmatched detections
