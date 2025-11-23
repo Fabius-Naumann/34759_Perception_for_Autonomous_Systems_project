@@ -104,8 +104,8 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
             continue
 
         aspect = h_b / (w_b + 1e-6)
-        if aspect < 0.7 or aspect > 4.0:
-            continue
+        # if aspect < 0.7 or aspect > 4.0:
+        #     continue
 
         cx, cy = centroids[label]
 
