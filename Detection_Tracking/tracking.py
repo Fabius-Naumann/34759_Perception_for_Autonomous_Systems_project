@@ -1,5 +1,6 @@
 # tracking.py
 import numpy as np
+import cv2
 
 # ---------------- Kalman filter functions -----------------
 
@@ -24,13 +25,51 @@ def init_kalman_state(cx, cy):
     P = np.eye(6, dtype=np.float32) * 500.0
     return x, P
 
+# -------------- TRACKING VISUALIZATION -----------------
+def draw_tracks(frame, tracks):
+    """
+    Draw confirmed tracks on the frame.
+    Each track must contain:
+        - id
+        - bbox = (x, y, w, h)
+        - x (Kalman state) → cx, cy
+        - color (tuple)
+    """
+    vis = frame.copy()
+
+    for tr in tracks:
+        color = tr["color"]
+        x, y, w, h = tr["bbox"]
+        cx = int(tr["x"][0, 0])
+        cy = int(tr["x"][1, 0])
+
+        # Draw bounding box
+        cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
+
+        # Draw center point
+        cv2.circle(vis, (cx, cy), 5, color, -1)
+
+        # Draw ID label
+        cv2.putText(
+            vis,
+            f"ID {tr['id']}",
+            (x, y - 5),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            2,
+        )
+
+    return vis
+
+
 # -------------------------------------------------------------
 #                     TRACK MANAGER
 #                 (with confirmation stage)
 # -------------------------------------------------------------
 
 class TrackManager:
-    def __init__(self, max_invisible=15, dist_thresh=80.0,
+    def __init__(self, max_invisible=40, dist_thresh=80.0,
                  min_confirm_frames=3):
 
         # real, confirmed tracks
