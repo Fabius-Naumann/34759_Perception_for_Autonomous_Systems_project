@@ -1,11 +1,16 @@
 import os
 import cv2
 import numpy as np
-from detection import detect_moving_objects
+from detection import (
+    detect_moving_objects,
+    draw_movement_mask,
+    draw_optical_flow,
+    draw_detections
+)
 from tracking import TrackManager
 
 # ---------------- Video Setup ----------------
-video_path = "./Detection_Tracking/inputs/seq1_image_02_video.mp4"  # Run from project root
+video_path = "./Detection_Tracking/inputs/seq2_image_02_video.mp4"  # Run from project root
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
 if not ret:
@@ -65,51 +70,17 @@ while True:
     # -------- Detection --------
     detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
 
-    # -------- Detection visualization video (red semitransparent mask) --------
-    det_vis = frame2.copy()
-    overlay = det_vis.copy()
-
-    mask_bool = movement_mask.astype(bool)
-    overlay[mask_bool] = (0, 0, 255)  # BGR red
-
-    det_vis = cv2.addWeighted(det_vis, 0.7, overlay, 0.3, 0.0)
+   # -------- Detection: visual mask --------
+    det_vis = draw_movement_mask(frame2, movement_mask)
     out_det.write(det_vis)
 
-    # -------- Draw optical flow visualization --------
-    flow_vis = frame2.copy()
-    step = 8
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            fx, fy = flow[y, x]
-            if np.hypot(fx, fy) < 2:
-                continue
-            end_point = (int(x + fx), int(y + fy))
-            cv2.arrowedLine(flow_vis, (x, y), end_point, (0, 0, 255), 1, tipLength=0.3)
-
+    # -------- Optical flow visualization --------  
+    flow_vis = draw_optical_flow(frame2, flow)
     out_flow.write(flow_vis)
 
-    # ---------------- Draw detection bounding boxes ----------------
-    frame_boxes = frame2.copy()
-
-    for det in detections:
-        x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-
-        # Blue bounding box
-        cv2.rectangle(
-            frame_boxes,
-            (x, y),
-            (x + w, y + h),
-            (255, 0, 0), 2
-        )
-
-        # Center point (yellow dot)
-        cx, cy = int(det["cx"]), int(det["cy"])
-        cv2.circle(frame_boxes, (cx, cy), 4, (0, 255, 255), -1)
-
-    # Save the box-visualization video
+    # -------- Bounding boxes --------
+    frame_boxes = draw_detections(frame2, detections)
     out_boxes.write(frame_boxes)
-
-
 
 
     # Prepare next frame
