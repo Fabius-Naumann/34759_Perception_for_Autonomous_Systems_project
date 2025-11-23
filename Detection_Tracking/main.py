@@ -28,14 +28,18 @@ fourcc = cv2.VideoWriter_fourcc(*"XVID")
 
 out_boxes_path = os.path.join(out_dir, "people_boxes.avi")
 out_flow_path  = os.path.join(out_dir, "people_flow.avi")
+out_det_path   = os.path.join(out_dir, "people_detection.avi")
 
 out_boxes = cv2.VideoWriter(out_boxes_path, fourcc, fps, (w, h))
 out_flow  = cv2.VideoWriter(out_flow_path,  fourcc, fps, (w, h))
+out_det   = cv2.VideoWriter(out_det_path,   fourcc, fps, (w, h))
 
 if not out_boxes.isOpened():
     raise RuntimeError(f"Failed to open VideoWriter for {out_boxes_path}")
 if not out_flow.isOpened():
     raise RuntimeError(f"Failed to open VideoWriter for {out_flow_path}")
+if not out_det.isOpened():
+    raise RuntimeError(f"Failed to open VideoWriter for {out_det_path}")
 
 # ---------------- Kalman Constants ----------------
 dt = 1.0 / fps
@@ -69,7 +73,6 @@ while True:
     if frame_count % 10 == 0:
         print(f"Processed {frame_count} / {total_frames} frames")
 
-
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
     # Optical flow
@@ -78,10 +81,26 @@ while True:
         0.5, 3, 20, 5, 5, 1.2, 0
     )
 
-    # -------- Detection --------
-    detections, movement_mask = detect_moving_objects(flow, frame1)
+    # -------- Detection (now passes prev & curr frames) --------
+    detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
 
-    # -------- Tracking --------
+    # -------- NEW: Detection visualization video (red semitransparent mask) --------
+    # Use frame1 to stay consistent with the rest of the visualizations
+    det_vis = frame1.copy()
+    overlay = det_vis.copy()
+
+    # movement_mask is 0/1; create boolean mask
+    mask_bool = movement_mask.astype(bool)
+
+    # Paint moving pixels red on overlay
+    overlay[mask_bool] = (0, 0, 255)  # BGR red
+
+    # Blend original frame and red overlay
+    det_vis = cv2.addWeighted(det_vis, 0.7, overlay, 0.3, 0.0)
+
+    out_det.write(det_vis)
+
+    # ---------------- Tracking (after detection visualization) ----------------
     tracker.predict_tracks(F, u, Q)
 
     # STEP 1: match to confirmed tracks
@@ -111,6 +130,7 @@ while True:
             cv2.arrowedLine(flow_vis, (x, y), end_point, (0, 0, 255), 1, tipLength=0.3)
 
     out_flow.write(flow_vis)
+
     # -------- Draw tracking results --------
     out_frame = frame1.copy()
 
@@ -133,7 +153,6 @@ while True:
 
     out_boxes.write(out_frame)
 
-
     # Prepare next frame
     gray1 = gray2.copy()
     frame1 = frame2.copy()
@@ -141,5 +160,6 @@ while True:
 cap.release()
 out_boxes.release()
 out_flow.release()
+out_det.release()
 
-print("Saved people_boxes.avi and people_flow.avi")
+print("Saved people_boxes.avi, people_flow.avi and people_detection.avi")
