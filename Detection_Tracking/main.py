@@ -75,33 +75,26 @@ while True:
 
     gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
 
-    # Optical flow
+    # Optical flow (Farneback)
     flow = cv2.calcOpticalFlowFarneback(
         gray1, gray2, None,
         0.5, 3, 20, 5, 5, 1.2, 0
     )
-    # Parameters for optical flow: 
 
-    # -------- Detection (now passes prev & curr frames) --------
+    # -------- Detection (pass previous & current frames) --------
     detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
 
-    # -------- NEW: Detection visualization video (red semitransparent mask) --------
-    # Use frame1 to stay consistent with the rest of the visualizations
-    det_vis = frame1.copy()
+    # -------- Detection visualization video (red semitransparent mask) --------
+    det_vis = frame2.copy()
     overlay = det_vis.copy()
 
-    # movement_mask is 0/1; create boolean mask
     mask_bool = movement_mask.astype(bool)
-
-    # Paint moving pixels red on overlay
     overlay[mask_bool] = (0, 0, 255)  # BGR red
 
-    # Blend original frame and red overlay
     det_vis = cv2.addWeighted(det_vis, 0.7, overlay, 0.3, 0.0)
-
     out_det.write(det_vis)
 
-    # ---------------- Tracking (after detection visualization) ----------------
+    # -------- Tracking (after detection visualization) --------
     tracker.predict_tracks(F, u, Q)
 
     # STEP 1: match to confirmed tracks
@@ -120,7 +113,7 @@ while True:
     tracker.remove_stale()
 
     # -------- Draw optical flow visualization --------
-    flow_vis = frame1.copy()
+    flow_vis = frame2.copy()
     step = 8
     for y in range(0, h, step):
         for x in range(0, w, step):
@@ -133,7 +126,7 @@ while True:
     out_flow.write(flow_vis)
 
     # -------- Draw tracking results --------
-    out_frame = frame1.copy()
+    out_frame = frame2.copy()
 
     # Yellow dots = detections
     for det in detections:
