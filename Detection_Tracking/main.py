@@ -81,7 +81,7 @@ while True:
         0.5, 3, 20, 5, 5, 1.2, 0
     )
 
-    # -------- Detection (pass previous & current frames) --------
+    # -------- Detection --------
     detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
 
     # -------- Detection visualization video (red semitransparent mask) --------
@@ -94,7 +94,7 @@ while True:
     det_vis = cv2.addWeighted(det_vis, 0.7, overlay, 0.3, 0.0)
     out_det.write(det_vis)
 
-    # -------- Tracking (after detection visualization) --------
+    # -------- Tracking --------
     tracker.predict_tracks(F, u, Q)
 
     # STEP 1: match to confirmed tracks

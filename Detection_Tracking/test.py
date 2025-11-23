@@ -1,50 +1,22 @@
+from ultralytics import YOLO
 import cv2
-import mediapipe as mp
 
-# Initialize MediaPipe's solution for holistic body and pose detection
-mp_holistic = mp.solutions.holistic
-mp_drawing = mp.solutions.drawing_utils
+# Load a pre-trained YOLOv8 model
+# 'yolov8n.pt' is the nano model, which is fast and accurate enough for many tasks
+model = YOLO('yolov8n.pt')
 
 # Path to your input video file
-INPUT_VIDEO_PATH = "Sequence 1.mp4"
+INPUT_VIDEO_PATH = "./Detection_Tracking/Sequence 1.mp4"
 
-# Use MediaPipe Holistic to detect people (it detects a pose which defines a person)
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-    cap = cv2.VideoCapture(INPUT_VIDEO_PATH)
+# Run object tracking on the video
+# The 'tracker' argument automatically enables Multi-Object Tracking (MOT)
+# 'bytetrack.yaml' is a good, modern tracking algorithm
+results = model.track(source=INPUT_VIDEO_PATH, 
+                      tracker="bytetrack.yaml", 
+                      show=True, 
+                      conf=0.3, # Confidence threshold (adjust this!)
+                      classes=[0]) # Class 0 in COCO is 'person'
 
-    if not cap.isOpened():
-        print(f"Error: Could not open video file {INPUT_VIDEO_PATH}")
-        exit()
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            print("End of video stream.")
-            break
-
-        # Convert the BGR image to RGB for MediaPipe processing
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # Process the image and get results
-        results = holistic.process(image)
-
-        # Convert the image color back to BGR for display
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-        # Draw pose landmarks (which implies a detected person)
-        mp_drawing.draw_landmarks(image, 
-                                  results.pose_landmarks, 
-                                  mp_holistic.POSE_CONNECTIONS,
-                                  mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4),
-                                  mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2))
-        
-        # NOTE: MediaPipe's primary focus is landmarks/pose. 
-        # For a simple rectangular bounding box, the first OpenCV method is better.
-
-        cv2.imshow('MediaPipe Pose Detection', image)
-
-        if cv2.waitKey(5) & 0xFF == 27: # Press 'Esc' to exit
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
+# The 'show=True' will display the video with bounding boxes and tracking IDs.
+# If you want to save the output video, use the 'save=True' argument:
+# results = model.track(source=INPUT_VIDEO_PATH, tracker="bytetrack.yaml", save=True)
