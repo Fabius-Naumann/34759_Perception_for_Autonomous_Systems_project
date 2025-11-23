@@ -5,7 +5,7 @@ from detection import detect_moving_objects
 from tracking import TrackManager
 
 # ---------------- Video Setup ----------------
-video_path = "./Detection_Tracking/Sequence 1.mp4"  # Run from project root
+video_path = "./Detection_Tracking/image_02_video.mp4"  # Run from project root
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
 if not ret:
@@ -41,25 +41,6 @@ if not out_flow.isOpened():
 if not out_det.isOpened():
     raise RuntimeError(f"Failed to open VideoWriter for {out_det_path}")
 
-# ---------------- Kalman Constants ----------------
-dt = 1.0 / fps
-F = np.eye(6, dtype=np.float32)
-F[0, 2] = dt
-F[1, 3] = dt
-F[0, 4] = 0.5 * dt**2
-F[1, 5] = 0.5 * dt**2
-F[2, 4] = dt
-F[3, 5] = dt
-
-Q = np.eye(6, dtype=np.float32) * 0.01
-H = np.zeros((2, 6), dtype=np.float32)
-H[0, 0] = 1
-H[1, 1] = 1
-R = np.eye(2, dtype=np.float32) * 0.1
-u = np.zeros((6, 1), dtype=np.float32)
-
-# ---------------- Tracker ----------------
-tracker = TrackManager(max_invisible=15, dist_thresh=80)
 
 # ---------------- Main Loop ----------------
 frame_count = 0
@@ -94,24 +75,6 @@ while True:
     det_vis = cv2.addWeighted(det_vis, 0.7, overlay, 0.3, 0.0)
     out_det.write(det_vis)
 
-    # -------- Tracking --------
-    tracker.predict_tracks(F, u, Q)
-
-    # STEP 1: match to confirmed tracks
-    assigned_tracks, assigned_dets = tracker.associate(detections, H, R)
-
-    # STEP 2: match remaining detections to pending tracks
-    assigned_pending = tracker.associate_pending(detections, H, R, assigned_dets)
-
-    # STEP 3: create new pending tracks for completely new detections
-    tracker.create_pending_tracks(detections, assigned_dets)
-
-    # STEP 4: promote tracks that survived enough frames
-    tracker.promote_tracks()
-
-    # STEP 5: remove stale confirmed or pending tracks
-    tracker.remove_stale()
-
     # -------- Draw optical flow visualization --------
     flow_vis = frame2.copy()
     step = 8
@@ -125,27 +88,29 @@ while True:
 
     out_flow.write(flow_vis)
 
-    # -------- Draw tracking results --------
-    out_frame = frame2.copy()
+    # ---------------- Draw detection bounding boxes ----------------
+    frame_boxes = frame2.copy()
 
-    # Yellow dots = detections
     for det in detections:
-        cx_d, cy_d = int(det["cx"]), int(det["cy"])
-        cv2.circle(out_frame, (cx_d, cy_d), 4, (0, 255, 255), -1)
+        x, y, w, h = det["x"], det["y"], det["w"], det["h"]
 
-    # Red circles = tracked objects
-    for tr in tracker.tracks:
-        cx = int(tr["x"][0, 0])
-        cy = int(tr["x"][1, 0])
+        # Blue bounding box
+        cv2.rectangle(
+            frame_boxes,
+            (x, y),
+            (x + w, y + h),
+            (255, 0, 0), 2
+        )
 
-        # Big red circle
-        cv2.circle(out_frame, (cx, cy), 10, (0, 0, 255), 2)
+        # Center point (yellow dot)
+        cx, cy = int(det["cx"]), int(det["cy"])
+        cv2.circle(frame_boxes, (cx, cy), 4, (0, 255, 255), -1)
 
-        # Optional: label with ID
-        cv2.putText(out_frame, f"{tr['id']}", (cx + 12, cy + 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+    # Save the box-visualization video
+    out_boxes.write(frame_boxes)
 
-    out_boxes.write(out_frame)
+
+
 
     # Prepare next frame
     gray1 = gray2.copy()
