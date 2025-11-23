@@ -5,7 +5,7 @@ from detection import detect_moving_objects
 from tracking import TrackManager
 
 # ---------------- Video Setup ----------------
-video_path = "./Detection_Tracking/image_02_video.mp4"  # Run from project root
+video_path = "./Detection_Tracking/inputs/seq1_image_02_video.mp4"  # Run from project root
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
 if not ret:

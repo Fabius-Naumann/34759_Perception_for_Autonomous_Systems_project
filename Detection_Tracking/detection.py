@@ -63,19 +63,21 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
     movement_mask = movement_mask.astype(np.uint8)
 
     # -------------------------------
-    # 4) Morphology: OPEN + CLOSE (smaller kernels)
+    # 4) Morphology (much stronger to avoid holes in people)
     # -------------------------------
-    kernel_open = np.ones((3, 3), np.uint8)
-    kernel_close = np.ones((9, 9), np.uint8)
 
-    mask_255 = movement_mask * 255
+    # Step 1: Remove pixel noise (light opening)
+    mask_clean = cv2.morphologyEx(movement_mask * 255, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
-    # Remove tiny speckles
-    mask_open = cv2.morphologyEx(mask_255, cv2.MORPH_OPEN, kernel_open)
-    # Fill small gaps in humans
-    mask_clean = cv2.morphologyEx(mask_open, cv2.MORPH_CLOSE, kernel_close)
+    # Step 2: Close holes inside human shapes
+    mask_clean = cv2.morphologyEx(mask_clean, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
 
+    # Step 3: Dilate slightly to restore full body outline
+    mask_clean = cv2.dilate(mask_clean, np.ones((7, 7), np.uint8), iterations=1)
+
+    # Convert to binary mask
     movement_mask_clean = (mask_clean > 0).astype(np.uint8)
+
 
     # -------------------------------
     # 5) Connected components
