@@ -12,41 +12,7 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=800):
 
     # Magnitude of flow
     mag = np.linalg.norm(flow, axis=2)
-    movement_mask = (mag > 5.0).astype(np.uint8)
-
-    # -------------------------------------------------
-    # Shadow suppression using HSV
-    #   - Shadows: darker (V drops), similar H and S
-    #   - We detect shadow pixels and then REMOVE them
-    # -------------------------------------------------
-    hsv_prev = cv2.cvtColor(frame_prev, cv2.COLOR_BGR2HSV)
-    hsv_curr = cv2.cvtColor(frame_curr, cv2.COLOR_BGR2HSV)
-
-    H1, S1, V1 = cv2.split(hsv_prev)
-    H2, S2, V2 = cv2.split(hsv_curr)
-
-    V1_f = V1.astype(np.float32) + 1e-3
-    V2_f = V2.astype(np.float32) + 1e-3
-    v_ratio = V2_f / V1_f  # < 1 if darker
-
-    # Thresholds (tuneable)
-    #   v_ratio < 0.9 → got darker
-    #   |ΔH| < 10, |ΔS| < 40 → similar color
-    dH = cv2.absdiff(H1, H2)
-    dS = cv2.absdiff(S1, S2)
-
-    shadow_pixels = (
-        (v_ratio < 0.9) &
-        (dH < 10) &
-        (dS < 40)
-    )
-
-    shadow_mask = shadow_pixels.astype(np.uint8)
-
-    # Non-shadow motion only
-    non_shadow = (1 - shadow_mask).astype(np.uint8)
-    movement_mask = movement_mask * non_shadow
-    movement_mask = movement_mask.astype(np.uint8)
+    movement_mask = (mag > 3.0).astype(np.uint8)
 
     # Morphological cleaning
     kernel_open = np.ones((5, 5), np.uint8)

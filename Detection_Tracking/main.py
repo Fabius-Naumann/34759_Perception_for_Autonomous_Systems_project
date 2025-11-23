@@ -80,6 +80,7 @@ while True:
         gray1, gray2, None,
         0.5, 3, 20, 5, 5, 1.2, 0
     )
+    # Parameters for optical flow: 
 
     # -------- Detection (now passes prev & curr frames) --------
     detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
