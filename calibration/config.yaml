@@ -1,0 +1,113 @@
+# Stereo Camera Calibration Configuration
+
+# Data paths (relative to project root)
+data:
+  raw_data_folder: "data/34759_final_project_raw"
+  calib_left: "calib/image_02/data"
+  calib_right: "calib/image_03/data"
+  output_dir: "calibration/results"
+  cache_dir: "calibration/cache"
+
+# Chessboard detection parameters
+detection:
+  pattern_sizes:
+    - [11, 7]   # [nb_vertical, nb_horizontal]
+    - [15, 5]
+    - [7, 5]
+  max_boards_per_image: 13
+  square_size_meters: 0.0995  # Physical size of chessboard squares
+  subpixel_window_scale: 0.25  # Fraction of square size for cornerSubPix
+  subpixel_iterations: 30
+  subpixel_epsilon: 0.001
+  
+  # Parallel processing
+  parallel_enabled: true
+  num_workers: -1  # -1 means use all available cores
+
+# Robust intrinsic calibration parameters
+robust_calibration:
+  # Stage 0: Per-image provisional filtering
+  enable_stage0: false
+  stage0_min_per_image: 3
+  
+  # Stage 1: Geometric deduplication (hash-based)
+  deduplicate: false
+  hash_precision: 2
+  
+  # Stage 2: Extrinsic pose clustering
+  extrinsic_deduplicate: true
+  extrinsic_angle_thresh_deg: 400
+  extrinsic_translation_thresh: 0.12
+  extrinsic_keep_per_cluster: 2
+  
+  # Stage 3: Diversity subsampling for pose coverage
+  diversity_subsample: true
+  max_diverse_samples: 120
+  min_pose_angle_deg: 15.0
+  min_pose_translation: 0.1
+  
+  # Stage 4: Pre-rejection filtering
+  pre_rejection: false
+  
+  # Stage 5: RANSAC calibration
+  ransac_iterations: 200
+  subset_size: 6
+  
+  # Stage 6: Post-rejection tightening
+  post_rejection: true
+  rms_threshold: null  # null means adaptive threshold
+  
+  # Naive calibration settings
+  naive_cal_max_samples: 50
+  
+  # Progress display
+  verbose: true
+  progress: true
+
+# Stereo matching parameters
+matching:
+  method: "hungarian"  # "greedy" or "hungarian"
+  dy_thresh: 18.0  # Vertical gating threshold (pixels)
+  scale_ratio_thresh: 0.25  # Relative height difference threshold
+
+# Stereo pair subsampling (diversity filtering before stereo calibration)
+stereo_subsampling:
+  enabled: true
+  max_pairs: 100  # Maximum stereo pairs to keep
+  min_angle_deg: 400.0  # Minimum pose angle difference (degrees)
+  min_translation: 0.25 # Minimum pose translation difference
+
+# Stereo calibration parameters
+stereo:
+  fix_intrinsic: true  # Use pre-calibrated intrinsics
+  max_iterations: 100
+  epsilon: 1.0e-5
+  
+  # Rectification
+  rectify_alpha: 0.2  # 0=crop to valid, 1=keep all pixels
+  zero_disparity: true
+
+# Visualization parameters
+visualization:
+  mode: "save"  # "show" or "save" or "both"
+  dpi: 150
+  figsize_single: [12, 5]
+  figsize_stereo: [16, 7]
+  figsize_heatmap: [36, 5]
+  heatmap_bins: 40
+  rectification_guide_lines: 12
+  
+  # Output paths (relative to output_dir)
+  undistortion_left: "undistortion_left.png"
+  undistortion_right: "undistortion_right.png"
+  heatmap_left: "heatmap_left.png"
+  heatmap_right: "heatmap_right.png"
+  rectification_preview: "rectification_preview_{}.png"
+  matched_boards: "matched_boards_{}.png"
+
+# Result export format
+export:
+  format: "yaml"  # "yaml" or "json" or "npz"
+  include_metadata: true
+  save_intermediate: true  # Save per-camera results before stereo
+  output_filename: "stereo_calibration.yaml"
