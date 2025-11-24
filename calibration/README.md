@@ -9,10 +9,10 @@ calibration/
 ├── calibration_refactored.ipynb    # Main calibration notebook (NEW)
 ├── calibration_backup.ipynb        # Backup of original notebook
 ├── config.yaml                     # Configuration parameters
+├── cache/                          # Cached intermediate results
 ├── results/                        # Output directory (generated)
 │   ├── stereo_calibration.yaml    # Saved calibration parameters
-│   ├── *.png                      # Visualization outputs
-│   └── cache/                     # Cached intermediate results
+│   └── *.png                      # Visualization outputs
 └── utils/                          # Calibration utilities (NEW)
     ├── __init__.py                 # Package exports
     ├── data_structures.py          # Type-safe data containers
@@ -20,7 +20,8 @@ calibration/
     ├── matching.py                 # Stereo board matching
     ├── calibration_robust.py       # Robust calibration algorithms
     ├── visualization.py            # Plotting functions
-    └── io.py                       # Save/load functions
+    ├── io.py                       # Save/load functions
+    └── cache.py                    # Caching utilities
 ```
 
 ## Quick Start
@@ -81,6 +82,13 @@ The robust calibration algorithm implements a multi-stage pipeline:
 6. **Post-Rejection**: Tighten inlier set for final calibration
 
 This approach significantly improves calibration accuracy and robustness compared to naive `cv2.calibrateCamera`.
+
+### Robust Stereo Calibration
+
+Similar to the intrinsic pipeline, the stereo calibration now supports a RANSAC-like procedure (`calibrate_stereo_robust`) that:
+1. Iteratively calibrates on random subsets of stereo pairs.
+2. Evaluates the model on the full dataset.
+3. Selects the subset that minimizes global RMS error.
 
 ### Parallel Processing
 
@@ -153,6 +161,7 @@ Core calibration algorithms:
 
 - `calibrate_intrinsics_robust()`: RANSAC-based intrinsic calibration
 - `calibrate_stereo()`: Stereo calibration with rectification
+- `calibrate_stereo_robust()`: RANSAC-based stereo calibration
 - Automatic result caching support
 
 ### visualization.py
@@ -162,6 +171,7 @@ Plotting functions with save/show modes:
 - `plot_undistortion_comparison()`: Before/after undistortion
 - `plot_imagepoints_heatmap()`: Calibration point coverage
 - `plot_matched_boards()`: Stereo matching visualization
+- `visualize_stereo_matches()`: High-level stereo match visualization
 - `plot_rectification_preview()`: Rectified epipolar alignment
 
 ### io.py
@@ -170,7 +180,16 @@ Serialization and deserialization:
 
 - `save_calibration()`: Export to YAML/JSON/NPZ
 - `load_calibration()`: Load from any supported format
+- `load_kitti_calibration()`: Import KITTI-style `calib_cam_to_cam.txt`
 - Human-readable YAML output for easy inspection
+
+### cache.py
+
+Centralized caching utilities:
+
+- `save_to_cache()`: Save intermediate results to pickle
+- `load_from_cache()`: Load cached results with invalidation checks
+- `clear_cache()`: Utility to clean cache directory
 
 ## Configuration Reference
 

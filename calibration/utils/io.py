@@ -4,6 +4,7 @@ I/O utilities for saving and loading calibration results.
 Supports YAML, JSON, and NPZ formats with human-readable output.
 """
 
+import contextlib
 import json
 from pathlib import Path
 
@@ -238,4 +239,92 @@ def load_calibration(input_path: Path | str, fmt: str | None = None) -> StereoRi
         raise ValueError(f"Unsupported format: {fmt}")
 
     print(f"Calibration loaded from {input_path}")
+    return rig
+
+
+def load_kitti_calibration(input_path: Path | str) -> StereoRig:
+    """
+    Load calibration from KITTI-style calib_cam_to_cam.txt file.
+
+    Assumes Camera 02 is Left and Camera 03 is Right (standard KITTI setup).
+
+    Args:
+        input_path: Path to calib_cam_to_cam.txt
+
+    Returns:
+        StereoRig populated with K, dist, R, T, etc.
+    """
+    input_path = Path(input_path)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Calibration file not found: {input_path}")
+
+    data = {}
+    with input_path.open("r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            with contextlib.suppress(ValueError):
+                # Parse space-separated floats
+                data[key] = np.array([float(x) for x in value.strip().split()])
+
+    rig = StereoRig()
+
+    # Helper to reshape arrays
+    def get_matrix(key, shape):
+        if key in data:
+            return data[key].reshape(shape)
+        return None
+
+    # Load Camera 02 (Left)
+    if "S_02" in data:
+        rig.left.image_size = tuple(data["S_02"].astype(int))
+    rig.left.K = get_matrix("K_02", (3, 3))
+    rig.left.dist = get_matrix("D_02", (5,))  # KITTI usually has 5 distortion coeffs
+    rig.left.R = get_matrix("R_rect_02", (3, 3))  # Rectification rotation
+    rig.left.P = get_matrix("P_rect_02", (3, 4))  # Projection matrix
+
+    # Load Camera 03 (Right)
+    if "S_03" in data:
+        rig.right.image_size = tuple(data["S_03"].astype(int))
+    rig.right.K = get_matrix("K_03", (3, 3))
+    rig.right.dist = get_matrix("D_03", (5,))
+    rig.right.R = get_matrix("R_rect_03", (3, 3))
+    rig.right.P = get_matrix("P_rect_03", (3, 4))
+
+    # Calculate Stereo Extrinsics (T and Baseline)
+    # In KITTI, T_xx is translation from Cam 00 to Cam xx.
+    # We want T from Left (02) to Right (03).
+    # T_02 = position of 02 wrt 00
+    # T_03 = position of 03 wrt 00
+    # Approximate baseline: B = ||T_03 - T_02||
+    # More precisely, if we assume cameras are rectified/aligned:
+    # Baseline is usually T_02(x) - T_03(x) or similar depending on coordinate system.
+    # KITTI T vectors are 3x1.
+
+    t_02 = get_matrix("T_02", (3, 1))
+    t_03 = get_matrix("T_03", (3, 1))
+
+    if t_02 is not None and t_03 is not None:
+        # Relative translation T_rel = T_03 - T_02 (approximate if R is small)
+        # Actually, P_rect_03(0,3) / P_rect_03(0,0) gives baseline * fx
+        # P_rect_02(0,3) is usually 0.
+        # P_rect_03(0,3) = -fx * baseline
+
+        # if rig.right.P is not None:
+        #     fx = rig.right.P[0, 0]
+        #     tx = rig.right.P[0, 3]
+        #     # baseline in meters = -tx / fx
+        #     rig.baseline = abs(tx / fx)
+
+        #     # Populate rig.T with [ -baseline, 0, 0 ] assuming rectification
+        #     rig.T = np.array([[-rig.baseline], [0], [0]])
+        #     rig.R = np.eye(3)  # Assuming rectified
+        # else:
+        # Fallback to raw translations
+        rig.T = t_03 - t_02
+        rig.baseline = np.linalg.norm(rig.T)
+
+    print(f"KITTI calibration loaded from {input_path}")
     return rig

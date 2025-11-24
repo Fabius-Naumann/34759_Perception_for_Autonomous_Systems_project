@@ -260,6 +260,35 @@ def build_stereo_dataset(
     return objpoints, imgpoints_left, imgpoints_right
 
 
+def group_detections_by_image(
+    corners: list[np.ndarray],
+    objpoints: list[np.ndarray],
+    indices: list[int],
+) -> dict[int, list[tuple[np.ndarray, tuple[int, int]]]]:
+    """
+    Group flat detection lists by image index.
+
+    Args:
+        corners: List of corner arrays
+        objpoints: List of object point arrays
+        indices: List of image indices
+
+    Returns:
+        Dictionary mapping image index to list of (corners, pattern_size) tuples
+    """
+    grouped = defaultdict(list)
+    for c, obj, idx in zip(corners, objpoints, indices, strict=False):
+        # Infer pattern size from objpoints
+        n_corners = obj.shape[0]
+        # Find divisors to get pattern size (simple heuristic matching implementation)
+        for nb_vert in range(2, 20):
+            if n_corners % nb_vert == 0:
+                nb_horiz = n_corners // nb_vert
+                grouped[idx].append((c, (nb_vert, nb_horiz)))
+                break
+    return grouped
+
+
 def build_stereo_pairs_from_detections(
     corners_left: list[np.ndarray],
     objpoints_left: list[np.ndarray],
@@ -319,25 +348,8 @@ def build_stereo_pairs_from_detections(
             return (cached["objpoints"], cached["imgpoints_left"], cached["imgpoints_right"], cached["metadata"])
 
     # Group detections by image index
-    left_by_image = defaultdict(list)
-    for corners, objp, img_idx in zip(corners_left, objpoints_left, indices_left, strict=False):
-        # Infer pattern size from objpoints
-        n_corners = objp.shape[0]
-        # Find divisors to get pattern size
-        for nb_vert in range(2, 20):
-            if n_corners % nb_vert == 0:
-                nb_horiz = n_corners // nb_vert
-                left_by_image[img_idx].append((corners, (nb_vert, nb_horiz)))
-                break
-
-    right_by_image = defaultdict(list)
-    for corners, objp, img_idx in zip(corners_right, objpoints_right, indices_right, strict=False):
-        n_corners = objp.shape[0]
-        for nb_vert in range(2, 20):
-            if n_corners % nb_vert == 0:
-                nb_horiz = n_corners // nb_vert
-                right_by_image[img_idx].append((corners, (nb_vert, nb_horiz)))
-                break
+    left_by_image = group_detections_by_image(corners_left, objpoints_left, indices_left)
+    right_by_image = group_detections_by_image(corners_right, objpoints_right, indices_right)
 
     # Match boards across stereo pairs
     stereo_objpoints = []
@@ -351,6 +363,7 @@ def build_stereo_pairs_from_detections(
         "matches_per_pair": [],
         "unmatched_left_per_pair": [],
         "unmatched_right_per_pair": [],
+        "pair_details": {},  # Store details for visualization: {img_idx: {matches, unmatched_L, unmatched_R}}
     }
 
     # Get common image indices
@@ -375,6 +388,11 @@ def build_stereo_pairs_from_detections(
         metadata["matches_per_pair"].append(len(matches))
         metadata["unmatched_left_per_pair"].append(len(unmatched_L))
         metadata["unmatched_right_per_pair"].append(len(unmatched_R))
+        metadata["pair_details"][img_idx] = {
+            "matches": matches,
+            "unmatched_L": unmatched_L,
+            "unmatched_R": unmatched_R,
+        }
 
         # Build stereo pairs from matches
         for iL, iR in matches:

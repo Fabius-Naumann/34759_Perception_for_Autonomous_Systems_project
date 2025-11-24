@@ -10,6 +10,7 @@ This package provides modular tools for:
 from .calibration_robust import (
     calibrate_intrinsics_robust,
     calibrate_stereo,
+    calibrate_stereo_robust,
     subsample_stereo_pairs,
 )
 from .data_structures import (
@@ -19,39 +20,49 @@ from .data_structures import (
     StereoRig,
 )
 from .detection import detect_chessboards_parallel, find_all_chessboards
-from .io import load_calibration, save_calibration
-from .matching import build_stereo_pairs_from_detections, match_chessboards
+from .io import load_calibration, load_kitti_calibration, save_calibration
+from .matching import (
+    build_stereo_pairs_from_detections,
+    group_detections_by_image,
+    match_chessboards,
+)
 from .visualization import (
     plot_imagepoints_heatmap,
     plot_matched_boards,
     plot_rectification_preview,
     plot_stereo_pair_coverage,
     plot_undistortion_comparison,
+    visualize_stereo_matches,
 )
 
 __all__ = [
     # Enums and data structures
-    "CameraIndex",
-    "CameraCalibration",
-    "StereoRig",
     "CalibrationConfig",
+    "CameraCalibration",
+    "CameraIndex",
+    "RobustCalibrationResult",
+    "StereoRig",
     # Detection
-    "find_all_chessboards",
     "detect_chessboards_parallel",
+    "find_all_chessboards",
     # Matching
-    "match_chessboards",
     "build_stereo_pairs_from_detections",
+    "group_detections_by_image",
+    "match_chessboards",
     # Calibration
     "calibrate_intrinsics_robust",
     "calibrate_stereo",
+    "calibrate_stereo_robust",
     "subsample_stereo_pairs",
     # Visualization
-    "plot_undistortion_comparison",
     "plot_imagepoints_heatmap",
     "plot_matched_boards",
     "plot_rectification_preview",
     "plot_stereo_pair_coverage",
+    "plot_undistortion_comparison",
+    "visualize_stereo_matches",
     # I/O
-    "save_calibration",
     "load_calibration",
+    "load_kitti_calibration",
+    "save_calibration",
 ]

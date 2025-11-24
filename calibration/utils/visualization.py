@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
 
+from .matching import group_detections_by_image
+
 
 def _get_output_mode(config_mode: str | None, override_mode: str | None) -> str:
     """Determine output mode from config and override."""
@@ -400,6 +402,19 @@ def plot_stereo_pair_coverage(
             label="Kept",
             zorder=2,
         )
+        # Add indices
+        for i in np.where(kept_mask)[0]:
+            ax_left.text(
+                centroids_left[i, 0],
+                centroids_left[i, 1],
+                str(i),
+                fontsize=8,
+                color="white",
+                ha="center",
+                va="center",
+                fontweight="bold",
+                zorder=3,
+            )
 
     ax_left.legend(loc="upper right")
 
@@ -441,6 +456,19 @@ def plot_stereo_pair_coverage(
             label="Kept",
             zorder=2,
         )
+        # Add indices
+        for i in np.where(kept_mask)[0]:
+            ax_right.text(
+                centroids_right[i, 0],
+                centroids_right[i, 1],
+                str(i),
+                fontsize=8,
+                color="white",
+                ha="center",
+                va="center",
+                fontweight="bold",
+                zorder=3,
+            )
 
     ax_right.legend(loc="upper right")
 
@@ -474,3 +502,86 @@ def create_undistortion_gallery(
     for idx, path in enumerate(samples):
         output_path = output_dir / f"undistort_{camera_name}_{idx}.png"
         plot_undistortion_comparison(path, K, dist, camera_name, output_path, mode)
+
+
+def visualize_stereo_matches(
+    corners_left: list[np.ndarray],
+    objpoints_left: list[np.ndarray],
+    indices_left: list[int],
+    corners_right: list[np.ndarray],
+    objpoints_right: list[np.ndarray],
+    indices_right: list[int],
+    images_left: list[Path],
+    images_right: list[Path],
+    matching_metadata: dict,
+    output_dir: Path,
+    vis_mode: str = "save",
+    max_pairs: int = 3,
+) -> None:
+    """
+    Visualize matched stereo pairs.
+
+    Args:
+        corners_left, objpoints_left, indices_left: Left detection data
+        corners_right, objpoints_right, indices_right: Right detection data
+        images_left, images_right: Lists of image paths
+        matching_metadata: Metadata returned by build_stereo_pairs_from_detections
+        output_dir: Directory to save visualizations
+        vis_mode: Visualization mode ('save', 'show', 'both')
+        max_pairs: Maximum number of pairs to visualize
+    """
+    # Group detections for easy access
+    left_by_image = group_detections_by_image(corners_left, objpoints_left, indices_left)
+    right_by_image = group_detections_by_image(corners_right, objpoints_right, indices_right)
+
+    # Select pairs to visualize (e.g., first, middle, last)
+    pair_details = matching_metadata.get("pair_details", {})
+    available_indices = sorted(pair_details.keys())
+
+    if not available_indices:
+        print("No matching details available for visualization")
+        return
+
+    # Pick indices
+    if len(available_indices) <= max_pairs:
+        vis_indices = available_indices
+    else:
+        # Always include first and last, and sample in between
+        vis_indices = [available_indices[0]]
+        if max_pairs > 2:
+            step = (len(available_indices) - 1) / (max_pairs - 1)
+            for i in range(1, max_pairs - 1):
+                idx = int(i * step)
+                if available_indices[idx] not in vis_indices:
+                    vis_indices.append(available_indices[idx])
+        if available_indices[-1] not in vis_indices:
+            vis_indices.append(available_indices[-1])
+
+    vis_indices = sorted(set(vis_indices))
+    print(f"\nVisualizing matches for pairs: {vis_indices}")
+
+    for k in vis_indices:
+        details = pair_details[k]
+
+        # Load images
+        imgL = cv2.imread(str(images_left[k]))
+        imgR = cv2.imread(str(images_right[k]))
+
+        if imgL is None or imgR is None:
+            print(f"Warning: Could not load images for pair {k}")
+            continue
+
+        vis_filename = f"matched_boards_{k}.png"
+
+        plot_matched_boards(
+            k,
+            imgL,
+            imgR,
+            left_by_image[k],
+            right_by_image[k],
+            details["matches"],
+            details["unmatched_L"],
+            details["unmatched_R"],
+            output_path=output_dir / vis_filename,
+            mode=vis_mode,
+        )

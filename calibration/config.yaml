@@ -75,7 +75,7 @@ stereo_subsampling:
   enabled: true
   max_pairs: 100  # Maximum stereo pairs to keep
   min_angle_deg: 400.0  # Minimum pose angle difference (degrees)
-  min_translation: 0.25 # Minimum pose translation difference
+  min_translation: 0.8 # Minimum pose translation difference
 
 # Stereo calibration parameters
 stereo:
@@ -84,7 +84,7 @@ stereo:
   epsilon: 1.0e-5
   
   # Rectification
-  rectify_alpha: 0.2  # 0=crop to valid, 1=keep all pixels
+  rectify_alpha: 0  # 0=crop to valid, 1=keep all pixels
   zero_disparity: true
 
 # Visualization parameters

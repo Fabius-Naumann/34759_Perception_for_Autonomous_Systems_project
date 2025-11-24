@@ -693,6 +693,175 @@ def calibrate_stereo(
     return rig
 
 
+def _compute_stereo_errors(
+    objpoints: list[np.ndarray],
+    imgpoints_left: list[np.ndarray],
+    imgpoints_right: list[np.ndarray],
+    K_left: np.ndarray,
+    dist_left: np.ndarray,
+    K_right: np.ndarray,
+    dist_right: np.ndarray,
+    R: np.ndarray,
+    T: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute stereo reprojection errors for each pair.
+
+    Estimates pose for each board relative to Left camera, then projects
+    to Right camera using stereo extrinsics (R, T) to compute consistency error.
+    """
+    errors = []
+    rvec_stereo, _ = cv2.Rodrigues(R)
+
+    for obj, imgL, imgR in zip(objpoints, imgpoints_left, imgpoints_right, strict=False):
+        # 1. Estimate pose relative to Left camera
+        ok, rvecL, tvecL = cv2.solvePnP(obj, imgL, K_left, dist_left)
+        if not ok:
+            errors.append(float("inf"))
+            continue
+
+        # 2. Project to Left (intrinsic error)
+        projL, _ = cv2.projectPoints(obj, rvecL, tvecL, K_left, dist_left)
+        errL = np.linalg.norm(projL.reshape(-1, 2) - imgL.reshape(-1, 2), axis=1)
+
+        # 3. Project to Right using Stereo Extrinsics
+        # P_right = R * P_left + T
+        # Compose: (R, T) * (rvecL, tvecL)
+        rvecR, tvecR = cv2.composeRT(rvecL, tvecL, rvec_stereo, T)[:2]
+
+        projR, _ = cv2.projectPoints(obj, rvecR, tvecR, K_right, dist_right)
+        errR = np.linalg.norm(projR.reshape(-1, 2) - imgR.reshape(-1, 2), axis=1)
+
+        # Combined RMS for this board
+        mse = (np.sum(errL**2) + np.sum(errR**2)) / (2 * len(obj))
+        errors.append(np.sqrt(mse))
+
+    return np.array(errors)
+
+
+def calibrate_stereo_robust(
+    rig: StereoRig,
+    objpoints: list[np.ndarray],
+    imgpoints_left: list[np.ndarray],
+    imgpoints_right: list[np.ndarray],
+    image_size: tuple[int, int],
+    ransac_iterations: int = 20,
+    subset_size: int = 30,
+    fix_intrinsic: bool = True,
+    max_iterations: int = 100,
+    epsilon: float = 1e-5,
+    rectify_alpha: float = 0.2,
+    zero_disparity: bool = True,
+    verbose: bool = True,
+) -> tuple[StereoRig, list[int]]:
+    """
+    Perform robust stereo calibration using RANSAC-like subset selection.
+
+    Iteratively calibrates on random subsets of stereo pairs and selects the model
+    that minimizes RMS error across ALL provided pairs.
+
+    Args:
+        rig: StereoRig with pre-calibrated cameras
+        objpoints, imgpoints_left, imgpoints_right: Stereo detection data
+        image_size: Image dimensions
+        ransac_iterations: Number of random subsets to try
+        subset_size: Number of pairs in each subset
+        fix_intrinsic: Use fixed intrinsics
+        max_iterations, epsilon: Calibration termination criteria
+        rectify_alpha, zero_disparity: Rectification parameters
+        verbose: Print progress
+
+    Returns:
+        Tuple of (Best StereoRig, List of indices used in best subset)
+    """
+    n_pairs = len(objpoints)
+    if n_pairs < 4:
+        raise ValueError("Need at least 4 stereo pairs for calibration")
+
+    subset_size = min(subset_size, n_pairs)
+
+    if verbose:
+        print(f"Robust Stereo Calibration: {n_pairs} pairs, {ransac_iterations} iters, subset={subset_size}")
+
+    best_rms = float("inf")
+    best_rig = None
+    best_subset_indices = list(range(n_pairs))
+
+    rng = np.random.default_rng(42)
+
+    # Always include a run with ALL data first
+    iter_indices = [list(range(n_pairs))]
+    # Then random subsets
+    for _ in range(ransac_iterations):
+        iter_indices.append(list(rng.choice(n_pairs, size=subset_size, replace=False)))
+
+    for i, indices in enumerate(iter_indices):
+        is_full_set = i == 0
+
+        # Prepare subset
+        obj_sub = [objpoints[k] for k in indices]
+        imgL_sub = [imgpoints_left[k] for k in indices]
+        imgR_sub = [imgpoints_right[k] for k in indices]
+
+        # Calibrate on subset
+        # We use a temporary rig to avoid modifying the input in-place during search
+        temp_rig = StereoRig(left=rig.left, right=rig.right)
+
+        try:
+            # We use the standard calibrate_stereo but suppress output
+            temp_rig = calibrate_stereo(
+                temp_rig,
+                obj_sub,
+                imgL_sub,
+                imgR_sub,
+                image_size,
+                fix_intrinsic=fix_intrinsic,
+                max_iterations=max_iterations,
+                epsilon=epsilon,
+                rectify_alpha=rectify_alpha,
+                zero_disparity=zero_disparity,
+                verbose=False,
+            )
+        except cv2.error:
+            continue
+
+        # Evaluate on ALL data
+        # Note: calibrate_stereo computes RMS on the training set (subset).
+        # We want RMS on the full set to check generalization/robustness.
+        all_errors = _compute_stereo_errors(
+            objpoints,
+            imgpoints_left,
+            imgpoints_right,
+            temp_rig.left.K,
+            temp_rig.left.dist,
+            temp_rig.right.K,
+            temp_rig.right.dist,
+            temp_rig.R,
+            temp_rig.T,
+        )
+
+        # Filter out infs
+        valid_errors = all_errors[np.isfinite(all_errors)]
+        current_rms = float("inf") if len(valid_errors) < len(all_errors) else np.sqrt(np.mean(valid_errors**2))
+
+        if verbose:
+            subset_type = "FULL" if is_full_set else f"SUB({len(indices)})"
+            print(f"  Iter {i}: {subset_type} -> RMS={current_rms:.4f} px (Train RMS={temp_rig.stereo_rms:.4f})")
+
+        if current_rms < best_rms:
+            best_rms = current_rms
+            best_rig = temp_rig
+            best_subset_indices = indices
+
+    if best_rig is None:
+        raise RuntimeError("Robust stereo calibration failed to find any valid model")
+
+    if verbose:
+        print(f"Best RMS: {best_rms:.4f} px using {len(best_subset_indices)} pairs")
+
+    return best_rig, best_subset_indices
+
+
 # -------------------------
 # Caching helpers
 # -------------------------
