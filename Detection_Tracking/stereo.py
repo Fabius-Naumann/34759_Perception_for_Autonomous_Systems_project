@@ -6,7 +6,7 @@ SEQ = "seq3"
 LEFT_VIDEO  = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
 RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
 
-OUT_VIDEO   = f"./Detection_Tracking/out/{SEQ}_depth_video.avi"
+OUT_VIDEO   = f"./Detection_Tracking/out/{SEQ}/depth_video.avi"
 
 # ---- Open the videos ----
 capL = cv2.VideoCapture(LEFT_VIDEO)

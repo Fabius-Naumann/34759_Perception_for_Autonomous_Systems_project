@@ -10,7 +10,7 @@ from detection import (
 from tracking import TrackManager, draw_tracks
 
 # ---------------- Video Setup ----------------
-SEQ = "seq2"
+SEQ = "seq1"
 video_path = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
 cap = cv2.VideoCapture(video_path)
 ret, frame1 = cap.read()
