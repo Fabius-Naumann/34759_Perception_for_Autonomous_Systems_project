@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from detection import (
+from yolo import (
     detect_moving_objects,
     draw_movement_mask,
     draw_optical_flow,
@@ -121,7 +121,7 @@ while True:
     )
 
     # -------- Detection (2D, right camera) --------
-    detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
+    detections, movement_mask = detect_moving_objects(frame2)
 
     # -------- Stereo depth (left & right current frames) --------
     grayL2 = cv2.cvtColor(frameL2, cv2.COLOR_BGR2GRAY)
