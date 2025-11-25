@@ -7,9 +7,9 @@ from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, classification_report
 from PIL import ImageOps
 
-from Model import ResNet
-from Data import get_dataloaders
-from Visualization import plot_training_history, plot_misclassified_images, plot_saliency_maps
+from .Model import ResNet
+from .Data import get_dataloaders
+from .Visualization import plot_training_history, plot_misclassified_images, plot_saliency_maps
 
 def train_model(model, train_loader, val_loader, num_epochs=10, lr=1e-4, weight_decay=1e-4, criterion = nn.CrossEntropyLoss(), scheduler=None, device=None):
     
@@ -126,17 +126,34 @@ def train_SVM(train_loader, val_loader, device='cpu'):
 
     return clf
 
-def prediction(model, image, device='cpu'):
-    classes = ['bicycle', 'car', 'person']
-    model.eval()
-    target_size = (128, 128)
+from torchvision import transforms
+to_pil = transforms.ToPILImage()
+
+def prediction(model, image, device="cpu", target_size=(224, 224)):
+    # If the image is a tensor, convert to PIL
+    if isinstance(image, torch.Tensor):
+        # remove batch dim if needed
+        if image.dim() == 4:
+            image = image[0]
+        image = to_pil(image.cpu())
+
+    # Now image is PIL -> safe for ImageOps
     resized_img = ImageOps.pad(image, target_size, color=(0,0,0))
-    resized_img = resized_img.to(device)
+
+    # Convert back to tensor
+    preprocess = transforms.ToTensor()
+    tensor = preprocess(resized_img).unsqueeze(0).to(device)
+
+    model.eval()
     with torch.no_grad():
-        output = model(resized_img.unsqueeze(0))
-        _, predicted = output.max(1)
-    pred = classes[predicted.item()]
-    return pred
+        output = model(tensor)
+        _, predicted_idx = torch.max(output, 1)
+
+    # If model has no idx_to_class, default to numeric index
+    if hasattr(model, "idx_to_class"):
+        return model.idx_to_class[predicted_idx.item()]
+    else:
+        return str(predicted_idx.item())
 
 
 if __name__ == "__main__":

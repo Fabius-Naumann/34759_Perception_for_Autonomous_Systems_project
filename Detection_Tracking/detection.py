@@ -10,19 +10,10 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
 
     h, w = frame_prev.shape[:2]
 
-    # -------------------------------
-    # 1) Base motion from flow magnitude (moderate fixed threshold)
-    # -------------------------------
     mag = np.linalg.norm(flow, axis=2)
-
-    # Tuned for this sequence (slow walking, static camera)
     base_th = 0.8
     movement_mask = (mag > base_th).astype(np.uint8)
 
-    # -------------------------------
-    # 2) HSV shadow suppression
-    #    Remove pixels that mostly just get darker
-    # -------------------------------
     hsv_prev = cv2.cvtColor(frame_prev, cv2.COLOR_BGR2HSV)
     hsv_curr = cv2.cvtColor(frame_curr, cv2.COLOR_BGR2HSV)
 
@@ -31,25 +22,20 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
 
     V1_f = V1.astype(np.float32) + 1e-3
     V2_f = V2.astype(np.float32) + 1e-3
-    v_ratio = V2_f / V1_f  # < 1 if darker
+    v_ratio = V2_f / V1_f
 
     dH = cv2.absdiff(H1, H2)
     dS = cv2.absdiff(S1, S2)
 
-    # Slightly stricter than the last version
     shadow_pixels = (
-        (v_ratio < 0.85) &   # darker
-        (dH < 12)        &   # similar hue
-        (dS < 50)            # similar saturation
+        (v_ratio < 0.85) &
+        (dH < 12) &
+        (dS < 50)
     )
 
     shadow_mask = shadow_pixels.astype(np.uint8)
-    non_shadow = (1 - shadow_mask).astype(np.uint8)
-    movement_mask = movement_mask * non_shadow
+    movement_mask = movement_mask * (1 - shadow_mask)
 
-    # -------------------------------
-    # 3) Background subtraction fusion (MOG2)
-    # -------------------------------
     if not hasattr(detect_moving_objects, "bg_subtractor"):
         detect_moving_objects.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=300, varThreshold=20, detectShadows=False
@@ -57,32 +43,15 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
 
     fgmask = detect_moving_objects.bg_subtractor.apply(frame_curr)
     fg_binary = (fgmask > 0).astype(np.uint8)
-
-    # Require BOTH flow and bg-sub change
     movement_mask = movement_mask * fg_binary
     movement_mask = movement_mask.astype(np.uint8)
 
-    # -------------------------------
-    # 4) Morphology (much stronger to avoid holes in people)
-    # -------------------------------
-
-    # Step 1: Remove pixel noise (light opening)
     mask_clean = cv2.morphologyEx(movement_mask * 255, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-
-    # Step 2: Close holes inside human shapes
     mask_clean = cv2.morphologyEx(mask_clean, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
-
-    # Step 3: Dilate slightly to restore full body outline
     mask_clean = cv2.dilate(mask_clean, np.ones((7, 7), np.uint8), iterations=1)
 
-    # Convert to binary mask
     movement_mask_clean = (mask_clean > 0).astype(np.uint8)
 
-
-    # -------------------------------
-    # 5) Connected components
-    #    + reject low-flow blobs (e.g. large ground patches)
-    # -------------------------------
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_clean)
 
     detections = []
@@ -92,20 +61,13 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
         if area < min_area:
             continue
 
-        # Average flow magnitude inside this blob
         comp_mask = (labels == label)
         comp_mag_mean = float(mag[comp_mask].mean()) if np.any(comp_mask) else 0.0
-
-        # Reject big blobs whose motion is very weak overall (typical for floor)
         if comp_mag_mean < base_th * 1.2:
             continue
 
         if w_b < 20 or h_b < 40:
             continue
-
-        aspect = h_b / (w_b + 1e-6)
-        # if aspect < 0.7 or aspect > 4.0:
-        #     continue
 
         cx, cy = centroids[label]
 
@@ -120,32 +82,19 @@ def detect_moving_objects(flow, frame_prev, frame_curr, min_area=600):
 
     return detections, movement_mask_clean
 
-# -------------------------------------------------------------------------
-# NEW: Visualization helper — Red semitransparent detection mask
-# -------------------------------------------------------------------------
+
 def draw_movement_mask(frame, movement_mask):
-    """
-    Draws a red semitransparent mask over detected movement.
-    Returns a visualization frame.
-    """
     vis = frame.copy()
     overlay = vis.copy()
 
     mask_bool = movement_mask.astype(bool)
-    overlay[mask_bool] = (0, 0, 255)  # Red
+    overlay[mask_bool] = (0, 0, 255)
 
     vis = cv2.addWeighted(vis, 0.7, overlay, 0.3, 0.0)
     return vis
 
 
-# -------------------------------------------------------------------------
-# NEW: Optical flow visualization
-# -------------------------------------------------------------------------
 def draw_optical_flow(frame, flow, step=8, min_mag=2.0):
-    """
-    Draws optical flow arrows.
-    Returns a visualization frame.
-    """
     h, w = frame.shape[:2]
     vis = frame.copy()
 
@@ -154,31 +103,24 @@ def draw_optical_flow(frame, flow, step=8, min_mag=2.0):
             fx, fy = flow[y, x]
             if np.hypot(fx, fy) < min_mag:
                 continue
-
             end_point = (int(x + fx), int(y + fy))
             cv2.arrowedLine(vis, (x, y), end_point, (0, 0, 255), 1, tipLength=0.3)
 
     return vis
 
 
-# -------------------------------------------------------------------------
-# NEW: Bounding boxes + center dots
-# -------------------------------------------------------------------------
 def draw_detections(frame, detections):
-    """
-    Draws bounding boxes + center points.
-    Returns a visualization frame.
-    """
     vis = frame.copy()
 
     for det in detections:
         x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-
-        # Box
         cv2.rectangle(vis, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        # Center point
         cx, cy = int(det["cx"]), int(det["cy"])
         cv2.circle(vis, (cx, cy), 4, (0, 255, 255), -1)
+
+        if "class_name" in det:
+            cv2.putText(vis, det["class_name"], (x, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
     return vis

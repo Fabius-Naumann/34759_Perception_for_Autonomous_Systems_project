@@ -1,3 +1,4 @@
 ultralytics
 numpy
+tqdm
 opencv-python
