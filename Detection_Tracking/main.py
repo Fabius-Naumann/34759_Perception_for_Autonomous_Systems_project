@@ -1,19 +1,30 @@
 import os
 import cv2
 import numpy as np
-from yolo import (
+
+from tracking import TrackManager, draw_tracks
+
+# ---------------- Sequence / paths ----------------
+SEQ = "seq2"  # use a stereo sequence: *_image_02 & *_image_03
+USE_YOLO = False
+
+LEFT_VIDEO  = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
+RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
+
+if USE_YOLO:
+    from yolo import (
     detect_moving_objects,
     draw_movement_mask,
     draw_optical_flow,
     draw_detections
 )
-from tracking import TrackManager, draw_tracks
-
-# ---------------- Sequence / paths ----------------
-SEQ = "seq1"  # use a stereo sequence: *_image_02 & *_image_03
-
-LEFT_VIDEO  = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
-RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
+else:
+    from detection import (
+        detect_moving_objects,
+        draw_movement_mask,
+        draw_optical_flow,
+        draw_detections
+    )
 
 capL = cv2.VideoCapture(LEFT_VIDEO)
 capR = cv2.VideoCapture(RIGHT_VIDEO)
@@ -34,7 +45,7 @@ if fps <= 0 or np.isnan(fps):
     print("Warning: FPS invalid → using fallback 30 FPS")
 
 # ---------------- Output dirs / writers ----------------
-out_dir = f"./Detection_Tracking/out/{SEQ}/"
+out_dir = f"./Detection_Tracking/out/{SEQ}/" if not USE_YOLO else f"./Detection_Tracking/out/yolo/{SEQ}/"
 os.makedirs(out_dir, exist_ok=True)
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
 
@@ -121,7 +132,10 @@ while True:
     )
 
     # -------- Detection (2D, right camera) --------
-    detections, movement_mask = detect_moving_objects(frame2)
+    if USE_YOLO:
+        detections, movement_mask = detect_moving_objects(frame2)
+    else:
+        detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
 
     # -------- Stereo depth (left & right current frames) --------
     grayL2 = cv2.cvtColor(frameL2, cv2.COLOR_BGR2GRAY)
