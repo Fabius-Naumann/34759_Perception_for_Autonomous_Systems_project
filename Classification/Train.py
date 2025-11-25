@@ -5,6 +5,7 @@ import joblib
 from tqdm.auto import tqdm
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, classification_report
+from PIL import ImageOps
 
 from Model import ResNet
 from Data import get_dataloaders
@@ -124,12 +125,22 @@ def train_SVM(train_loader, val_loader, device='cpu'):
     print(classification_report(y_val, y_pred))
 
     return clf
+
+def prediction(model, image, device='cpu'):
+    model.eval()
+    target_size = (128, 128)
+    resized_img = ImageOps.pad(image, target_size, color=(0,0,0))
+    resized_img = resized_img.to(device)
+    with torch.no_grad():
+        output = model(resized_img.unsqueeze(0))
+        _, predicted = output.max(1)
+    return predicted.item()
     
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     path = r"C:\Users\leona\fiftyone\coco-2017\dataset"
-    Train = False
+    Train = True
 
     model = ResNet(pretrained=True, finetune_all=True).to(device)
     train_dataloader, val_dataloader, classes = get_dataloaders(path=path, batch_size=32, apply_pca=False)
@@ -169,7 +180,7 @@ if __name__ == "__main__":
 
     if Train:
         model, history = train_model(model=model, train_loader=train_dataloader, val_loader=val_dataloader, 
-                            num_epochs=10, lr=1e-4, weight_decay=1e-4, criterion= nn.CrossEntropyLoss())
+                            num_epochs=5, lr=1e-4, weight_decay=1e-4, criterion= nn.CrossEntropyLoss())
         #Train Loss: 0.0032 | Train Acc: 99.95% | Val Loss: 0.1208 | Val Acc: 97.02%
 
         #Save model weights
@@ -185,5 +196,5 @@ if __name__ == "__main__":
 
     #Visualize
     # plot_training_history(history)
-    # plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
-    plot_saliency_maps(model, val_dataloader, device=device, classes=classes)
+    plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
+    # plot_saliency_maps(model, val_dataloader, device=device, classes=classes)
