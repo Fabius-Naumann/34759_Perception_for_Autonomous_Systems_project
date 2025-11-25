@@ -1,3 +1,7 @@
 *.mp4
 *.avi
+*.pycdata/*
 *.pyc
+intrinsic_camera_calibrator/*
+calibration/cache/*
+local/*
