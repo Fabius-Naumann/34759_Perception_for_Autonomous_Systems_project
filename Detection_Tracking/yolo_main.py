@@ -1,19 +1,22 @@
 import os
 import cv2
 import numpy as np
-
-from tracking import TrackManager, draw_tracks
-from detection import (detect_moving_objects,
-        draw_movement_mask,
-        draw_optical_flow,
-        draw_detections
-    )
-
+from yolo_detection import (
+    detect_moving_objects,
+    draw_movement_mask,
+    draw_optical_flow,
+    draw_detections
+)
+from yolo_tracking import TrackManager, draw_tracks
 # ---------------- Sequence / paths ----------------
-SEQ = "seq1"  # use a stereo sequence: *_image_02 & *_image_03
+SEQ = "seq2"  # use a stereo sequence: *_image_02 & *_image_03
 
 LEFT_VIDEO  = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
 RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
+
+
+
+# ---------------- Video Capture ----------------
 
 capL = cv2.VideoCapture(LEFT_VIDEO)
 capR = cv2.VideoCapture(RIGHT_VIDEO)
@@ -23,7 +26,7 @@ retR, frameR1 = capR.read()
 if not (retL and retR):
     raise RuntimeError(f"Cannot read first stereo frames from {LEFT_VIDEO} and {RIGHT_VIDEO}")
 
-# We'll do detection + tracking on the RIGHT camera
+# We will do detection + tracking on the RIGHT camera
 frame1 = frameR1.copy()
 gray1  = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
 h, w = frame1.shape[:2]
@@ -31,10 +34,11 @@ h, w = frame1.shape[:2]
 fps = capR.get(cv2.CAP_PROP_FPS)
 if fps <= 0 or np.isnan(fps):
     fps = 30.0
-    print("Warning: FPS invalid → using fallback 30 FPS")
+    print("Warning: FPS invalid -> using fallback 30 FPS")
 
 # ---------------- Output dirs / writers ----------------
-out_dir = f"./Detection_Tracking/out/{SEQ}/"
+out_dir = f"./Detection_Tracking/out/yolo/{SEQ}/"
+os.makedirs(out_dir, exist_ok=True)
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
 
 out_boxes   = cv2.VideoWriter(os.path.join(out_dir, "people_boxes.avi"),     fourcc, fps, (w, h))
@@ -60,18 +64,18 @@ stereo = cv2.StereoSGBM_create(
     disp12MaxDiff=0
 )
 
-# KITTI-like calibration (same as in stereo.py)
+# KITTI like calibration (same as in stereo.py)
 f = 707.0493        # pixels
 B = 0.4727          # meters
 MAX_DEPTH = 80.0    # max depth we trust in meters
 
 # ---------------- Tracking Setup (3D state) ----------------
+# For YOLO, we use tighter distances and smaller invisible allowance
 tracker = TrackManager(
-    max_invisible=60,
-    dist_thresh=70.0,      # tighter gate in pixels
-    min_confirm_frames=4   # less spurious tracks
+    max_invisible=8,       # YOLO runs every frame, do not keep tracks too long when missing
+    dist_thresh=35.0,      # tighter gate in pixels
+    min_confirm_frames=6   # require more hits before confirming a track
 )
-
 
 dt = 1.0 / fps
 
@@ -82,7 +86,12 @@ F[1, 4] = dt
 F[2, 5] = dt
 
 u = np.zeros((6, 1), dtype=np.float32)
-Q = np.eye(6, dtype=np.float32) * 2.0
+
+# Process noise for smoother motion (reduced from very large values)
+Q = np.eye(6, dtype=np.float32) * 0.05
+Q[3, 3] = 0.2   # vx
+Q[4, 4] = 0.2   # vy
+Q[5, 5] = 0.1   # vz
 
 # Measurement: [cx, cy, z]
 H = np.zeros((3, 6), dtype=np.float32)
@@ -93,7 +102,7 @@ H[2, 2] = 1.0
 R = np.eye(3, dtype=np.float32)
 R[0, 0] = 5.0   # pixel noise X
 R[1, 1] = 5.0   # pixel noise Y
-R[2, 2] = 2.0   # depth noise (meters^2) – tune if needed
+R[2, 2] = 2.0   # depth noise (meters^2)
 
 # ---------------- Main Loop ----------------
 frame_count = 0
@@ -120,9 +129,9 @@ while True:
     )
 
     # -------- Detection (2D, right camera) --------
-    detections, movement_mask = detect_moving_objects(flow, frame1, frame2)
+    detections, movement_mask = detect_moving_objects(frame2)
 
-    # -------- Stereo depth (left & right current frames) --------
+    # -------- Stereo depth (left and right current frames) --------
     grayL2 = cv2.cvtColor(frameL2, cv2.COLOR_BGR2GRAY)
     grayR2 = gray2  # already computed
 
