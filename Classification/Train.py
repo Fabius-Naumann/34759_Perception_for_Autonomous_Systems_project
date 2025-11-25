@@ -127,6 +127,7 @@ def train_SVM(train_loader, val_loader, device='cpu'):
     return clf
 
 def prediction(model, image, device='cpu'):
+    classes = ['bicycle', 'car', 'person']
     model.eval()
     target_size = (128, 128)
     resized_img = ImageOps.pad(image, target_size, color=(0,0,0))
@@ -134,17 +135,19 @@ def prediction(model, image, device='cpu'):
     with torch.no_grad():
         output = model(resized_img.unsqueeze(0))
         _, predicted = output.max(1)
-    return predicted.item()
-    
+    pred = classes[predicted.item()]
+    return pred
+
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     path = r"C:\Users\leona\fiftyone\coco-2017\dataset"
-    Train = True
+    Train = False
 
     model = ResNet(pretrained=True, finetune_all=True).to(device)
     train_dataloader, val_dataloader, classes = get_dataloaders(path=path, batch_size=32, apply_pca=False)
 
+    print("Classes: ", classes)
     # if Train:
     #     SVM = train_SVM(train_dataloader, val_dataloader, device=device)
     #     joblib.dump(SVM, "svm_model.pkl")
@@ -196,5 +199,5 @@ if __name__ == "__main__":
 
     #Visualize
     # plot_training_history(history)
-    plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
+    #plot_misclassified_images(model, val_dataloader, classes, device=device, max_images=10)
     # plot_saliency_maps(model, val_dataloader, device=device, classes=classes)
