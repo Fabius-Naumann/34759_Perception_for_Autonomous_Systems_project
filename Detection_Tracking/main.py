@@ -36,8 +36,8 @@ out_tracks  = cv2.VideoWriter(os.path.join(out_dir, "people_tracks.avi"),    fou
 
 # ---------------- Tracking Setup ----------------
 tracker = TrackManager(
-    max_invisible=15,
-    dist_thresh=80.0,
+    max_invisible=60,
+    dist_thresh=120.0,
     min_confirm_frames=3
 )
 
@@ -46,7 +46,7 @@ F = np.eye(6, dtype=np.float32)
 F[0, 2] = dt
 F[1, 3] = dt
 u = np.zeros((6, 1), dtype=np.float32)
-Q = np.eye(6, dtype=np.float32) * 0.5
+Q = np.eye(6, dtype=np.float32) * 2.0
 
 H = np.zeros((2, 6), dtype=np.float32)
 H[0, 0] = 1.0

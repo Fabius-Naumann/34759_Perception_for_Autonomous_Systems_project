@@ -62,7 +62,6 @@ def draw_tracks(frame, tracks):
 
     return vis
 
-
 # -------------------------------------------------------------
 #                     TRACK MANAGER
 #                 (with confirmation stage)
@@ -83,6 +82,15 @@ class TrackManager:
         self.max_invisible = max_invisible
         self.dist_thresh = dist_thresh
         self.min_confirm_frames = min_confirm_frames
+
+    def _allowed_distance(self, tr):
+        # Extract velocity vx, vy from Kalman state
+        vx = float(tr["x"][2, 0])
+        vy = float(tr["x"][3, 0])
+        speed = np.hypot(vx, vy)
+
+        # Base + speed-dependent expansion
+        return self.dist_thresh + 2.0 * speed
 
     # ---------------------------------------------------------
     #         PREDICT all confirmed and pending tracks
@@ -120,8 +128,10 @@ class TrackManager:
             t_idx, d_idx = np.unravel_index(np.argmin(distances), distances.shape)
             d = distances[t_idx, d_idx]
 
-            if not np.isfinite(d) or d > self.dist_thresh:
+            allowed = self._allowed_distance(self.tracks[t_idx])
+            if (not np.isfinite(d)) or (d > allowed):
                 break
+
             if t_idx in assigned_tracks or d_idx in assigned_dets:
                 distances[t_idx, d_idx] = np.inf
                 continue
@@ -166,8 +176,10 @@ class TrackManager:
             p_idx, d_idx = np.unravel_index(np.argmin(distances), distances.shape)
             d = distances[p_idx, d_idx]
 
-            if (not np.isfinite(d)) or (d > self.dist_thresh):
+            allowed = self._allowed_distance(self.pending_tracks[p_idx])
+            if (not np.isfinite(d)) or (d > allowed):
                 break
+
             if d_idx in assigned_dets:
                 distances[p_idx, d_idx] = np.inf
                 continue
@@ -253,5 +265,5 @@ class TrackManager:
         ]
         # pending tracks disappear fast
         self.pending_tracks = [
-            tr for tr in self.pending_tracks if tr["miss"] < 3
+            tr for tr in self.pending_tracks if tr["miss"] < 8
         ]
