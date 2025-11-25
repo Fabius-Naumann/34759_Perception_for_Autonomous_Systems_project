@@ -122,7 +122,7 @@ def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
 if __name__ == "__main__":
     DATASET_DIR = "C:\\Users\\roger\\OneDrive\\Documentos\\06_Uni 6\\Perception\\Final project\\34759_final_project_rect\\"
     images_and_timestamps_to_video(
-        root_dir=os.path.join(DATASET_DIR, "seq_02\\image_02"),
-        output_path=os.path.join(DATASET_DIR, "seq_02\\image_02_video.mp4"),
+        root_dir=os.path.join(DATASET_DIR, "seq_02\\image_03"),
+        output_path=os.path.join(DATASET_DIR, "seq_02\\seq2_image_03_video.mp4"),
         default_fps=30.0
     )

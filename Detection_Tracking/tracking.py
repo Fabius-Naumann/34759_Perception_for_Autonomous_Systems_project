@@ -101,6 +101,16 @@ class TrackManager:
             tr["invisible"] += 1
             tr["age"] += 1
 
+            # --- NEW: Move bbox with prediction ---
+            cx = float(tr["x"][0, 0])
+            cy = float(tr["x"][1, 0])
+            x_old, y_old, w_old, h_old = tr["bbox"]
+            dx = int(cx - (x_old + w_old/2))
+            dy = int(cy - (y_old + h_old/2))
+            tr["bbox"] = (x_old + dx, y_old + dy, w_old, h_old)
+
+
+
         for tr in self.pending_tracks:
             tr["x"], tr["P"] = kf_predict(tr["x"], tr["P"], F, u, Q)
             tr["miss"] += 1
@@ -234,11 +244,13 @@ class TrackManager:
             tid = self.next_id
             self.next_id += 1
 
-            color = (
-                int((37 * tid) % 255),
-                int((17 * tid) % 255),
-                int((29 * tid) % 255),
-            )
+            COLOR_POOL = [
+                (255, 0, 0), (0, 255, 0), (0, 0, 255),
+                (255, 255, 0), (255, 0, 255), (0, 255, 255),
+                (128, 0, 255), (255, 128, 0), (0, 128, 255),
+                (100, 200, 50), (200, 50, 100), (50, 200, 200),
+            ]
+            color = COLOR_POOL[tid % len(COLOR_POOL)]
 
             self.tracks.append({
                 "id": tid,
