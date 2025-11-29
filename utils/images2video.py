@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 from datetime import datetime
 
+# Find the Entry point at the bottom for usage details.
+
 # ------------------------------------------------------------
 # Helper: Parse KITTI timestamps (nanoseconds → microseconds)
 # ------------------------------------------------------------

@@ -9,7 +9,7 @@ from yolo_detection import (
 )
 from yolo_tracking import TrackManager, draw_tracks
 # ---------------- Sequence / paths ----------------
-SEQ = "seq2"  # use a stereo sequence: *_image_02 & *_image_03
+SEQ = "seq3"  # use a stereo sequence: *_image_02 & *_image_03
 
 LEFT_VIDEO  = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
 RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"

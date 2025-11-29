@@ -15,8 +15,9 @@ from Classification.Model import ResNet
 from Classification.Train import prediction
 
 # ================ INPUTS ================
-SEQ = "seq2"  # use a stereo sequence: *_image_02 & *_image_03
+SEQ = "seq1"  # use a stereo sequence: *_image_02 & *_image_03
 
+# You can generate the input videos from the dataset using the ./utils/images2video.py script
 LEFT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
 RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
 out_dir = f"./Detection_Tracking/out/{SEQ}/"
