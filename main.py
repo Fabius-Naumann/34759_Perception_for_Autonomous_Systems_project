@@ -14,7 +14,24 @@ from Detection_Tracking.detection import (
 from Classification.Model import ResNet
 from Classification.Train import prediction
 
+# ================ INPUTS ================
+SEQ = "seq2"  # use a stereo sequence: *_image_02 & *_image_03
+
+LEFT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
+RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
+out_dir = f"./Detection_Tracking/out/{SEQ}/"
+bbox_log_path = os.path.join(out_dir, "bounding_boxes.txt")
+
+# Calibration
+f = 707.0493  # pixels
+B = 0.4727  # meters
+MAX_DEPTH = 80.0  # max depth we trust in meters
+
+# ========================================
+
 # ---------------- Classification model setup ----------------
+bbox_log = open(bbox_log_path, "w")
+bbox_log.write("frame,track_id,class,cx,cy,w,h,depth\n")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -63,11 +80,6 @@ def crop_detection_to_tensor(frame_bgr, det):
 
 
 # ---------------- Sequence / paths ----------------
-SEQ = "seq3"  # use a stereo sequence: *_image_02 & *_image_03
-
-LEFT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
-RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
-
 capL = cv2.VideoCapture(LEFT_VIDEO)
 capR = cv2.VideoCapture(RIGHT_VIDEO)
 
@@ -89,7 +101,6 @@ if fps <= 0 or np.isnan(fps):
     print("Warning: FPS invalid → using fallback 30 FPS")
 
 # ---------------- Output dirs / writers ----------------
-out_dir = f"./Detection_Tracking/out/{SEQ}/"
 os.makedirs(out_dir, exist_ok=True)
 
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
@@ -126,11 +137,6 @@ stereo = cv2.StereoSGBM_create(
     speckleRange=3,
     disp12MaxDiff=0,
 )
-
-# KITTI-like calibration (same as in stereo.py)
-f = 707.0493  # pixels
-B = 0.4727  # meters
-MAX_DEPTH = 80.0  # max depth we trust in meters
 
 # ---------------- Tracking Setup (3D state) ----------------
 tracker = TrackManager(
@@ -279,6 +285,21 @@ while True:
     track_vis = draw_tracks(frame2, tracker.tracks)
     out_tracks.write(track_vis)
 
+    # ---- Save raw detection bounding boxes ----
+    for det in detections_3d:
+        bbox_log.write(
+            f"{frame_count},-1,{det['class_name']},{det['x']},{det['y']},{det['w']},{det['h']},{det['depth']:.3f}\n"
+        )
+    
+    # ---- Save track bounding boxes as well ----
+    for tr in tracker.tracks:
+        if hasattr(tr, "bbox") and tr.bbox is not None:
+            x, y, w_box, h_box = tr.bbox
+            bbox_log.write(
+                f"{frame_count},{tr.id},{tr.class_name},{x},{y},{w_box},{h_box},{tr.z:.3f}\n"
+            )
+
+
     # Prepare next frame (right camera)
     gray1 = gray2.copy()
     frame1 = frame2.copy()
@@ -291,4 +312,5 @@ out_det.release()
 out_tracks.release()
 out_depth.release()
 
+bbox_log.close()
 print("Saved boxes, flow, detection mask, depth, and 3D track videos with classes.")
