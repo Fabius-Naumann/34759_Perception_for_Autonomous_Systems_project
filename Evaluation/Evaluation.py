@@ -366,8 +366,8 @@ def visualize_frame_comparison(frame_id, annotations, detections, image_dir, out
         os.path.join(image_dir, f"{frame_id:06d}.png"),
         os.path.join(image_dir, f"{frame_id:06d}.jpg"),
         os.path.join(image_dir, f"{frame_id:06d}.jpeg"),
-        os.path.join(image_dir, f"{frame_id}.png"),
-        os.path.join(image_dir, f"{frame_id}.jpg"),
+        os.path.join(image_dir, f"{frame_id:010d}.png"),
+        os.path.join(image_dir, f"{frame_id:010d}.jpg"),
     ]
     img_path = next((p for p in candidates if os.path.exists(p)), None)
     if img_path is None:
@@ -413,7 +413,7 @@ def visualize_frame_comparison(frame_id, annotations, detections, image_dir, out
 
     out_path = os.path.join(out_dir, f"vis_frame_{frame_id:06d}.png")
     cv2.imwrite(out_path, img)
-    print(f"Wrote visualization: {out_path}")
+    #print(f"Wrote visualization: {out_path}")
 
     if show_image:
         cv2.imshow(f"frame_{frame_id}", img)
@@ -426,7 +426,7 @@ def visualize_frame_comparison(frame_id, annotations, detections, image_dir, out
 if __name__ == "__main__":
 
     ## File paths
-    Sequence = "seq1"  # "seq1" or "seq2"
+    Sequence = "seq2"  # "seq1" or "seq2"
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     seq_dir = os.path.join(base_dir, "Labels", Sequence)
@@ -453,6 +453,10 @@ if __name__ == "__main__":
 
 
     image_dir = os.path.join(os.path.dirname(__file__), "Labels", Sequence, "data")
-    visual_path = visualize_frame_comparison(8, annotations_data, detections_data, image_dir)
-    print("Visualization saved at:", visual_path)
+    # Visualize for all frames
+    for frame_id in sorted(set(annotations_data.keys()) | set(detections_data.keys())):
+        visualize_frame_comparison(frame_id, annotations_data, detections_data, image_dir)
+
+    #visual_path = visualize_frame_comparison(9, annotations_data, detections_data, image_dir)
+    #print("Visualization saved at:", visual_path)
 
