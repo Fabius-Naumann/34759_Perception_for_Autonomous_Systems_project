@@ -1,27 +1,26 @@
-# Stereo Camera Calibration - Refactored
+# Stereo Camera Calibration
 
-This directory contains a refactored, modular implementation of stereo camera calibration with robust RANSAC-based intrinsic calibration.
+This directory contains a modular implementation of stereo camera calibration with robust RANSAC-based intrinsic calibration.
 
 ## Directory Structure
 
 ```
 calibration/
-├── calibration_refactored.ipynb    # Main calibration notebook (NEW)
-├── calibration_backup.ipynb        # Backup of original notebook
-├── config.yaml                     # Configuration parameters
-├── cache/                          # Cached intermediate results
-├── results/                        # Output directory (generated)
-│   ├── stereo_calibration.yaml    # Saved calibration parameters
-│   └── *.png                      # Visualization outputs
-└── utils/                          # Calibration utilities (NEW)
-    ├── __init__.py                 # Package exports
-    ├── data_structures.py          # Type-safe data containers
-    ├── detection.py                # Chessboard detection
-    ├── matching.py                 # Stereo board matching
-    ├── calibration_robust.py       # Robust calibration algorithms
-    ├── visualization.py            # Plotting functions
-    ├── io.py                       # Save/load functions
-    └── cache.py                    # Caching utilities
+├── calibration.ipynb              # Main calibration notebook
+├── config.yaml                    # Configuration parameters
+├── cache/                         # Cached intermediate results
+├── results/                       # Output directory (generated)
+│   ├── stereo_calibration.yaml   # Saved calibration parameters
+│   └── *.png                     # Visualization outputs
+└── utils/                         # Calibration utilities
+    ├── __init__.py                # Package exports
+    ├── data_structures.py         # Type-safe data containers
+    ├── detection.py               # Chessboard detection
+    ├── matching.py                # Stereo board matching
+    ├── calibration_robust.py      # Robust calibration algorithms
+    ├── visualization.py           # Plotting functions
+    ├── io.py                      # Save/load functions
+    └── cache.py                   # Caching utilities
 ```
 
 ## Quick Start
@@ -36,7 +35,7 @@ Edit `config.yaml` to adjust:
 
 ### 2. Run Calibration
 
-Open and run `calibration_refactored.ipynb` cell by cell. The pipeline:
+Open and run `calibration.ipynb` cell by cell. The pipeline:
 1. Loads configuration
 2. Detects chessboards (parallel processing)
 3. Performs robust intrinsic calibration per camera
@@ -46,27 +45,7 @@ Open and run `calibration_refactored.ipynb` cell by cell. The pipeline:
 
 ### 3. Use Calibration Results
 
-```python
-from calibration.utils import load_calibration
-
-# Load saved parameters
-rig = load_calibration("calibration/results/stereo_calibration.yaml")
-
-# Access camera matrices
-K_left = rig.left.K
-dist_left = rig.left.dist
-K_right = rig.right.K
-dist_right = rig.right.dist
-
-# Access stereo parameters
-baseline = rig.baseline  # meters
-Q = rig.Q  # Disparity-to-depth matrix
-
-# Use rectification maps
-import cv2
-img_left_rectified = cv2.remap(img_left, rig.left.map1, rig.left.map2, cv2.INTER_LINEAR)
-img_right_rectified = cv2.remap(img_right, rig.right.map1, rig.right.map2, cv2.INTER_LINEAR)
-```
+Use the script rectify_images.py to use the calibration results, or use load_calibration form io.py to access individual matrices and parameters directly.
 
 ## Key Features
 
@@ -85,7 +64,7 @@ This approach significantly improves calibration accuracy and robustness compare
 
 ### Robust Stereo Calibration
 
-Similar to the intrinsic pipeline, the stereo calibration now supports a RANSAC-like procedure (`calibrate_stereo_robust`) that:
+Similar to the intrinsic pipeline, the stereo calibration supports a RANSAC-like procedure (`calibrate_stereo_robust`) that:
 1. Iteratively calibrates on random subsets of stereo pairs.
 2. Evaluates the model on the full dataset.
 3. Selects the subset that minimizes global RMS error.
@@ -145,7 +124,6 @@ Chessboard detection with multi-board support:
 
 - `find_all_chessboards()`: Detect multiple boards in single image
 - `detect_chessboards_parallel()`: Process multiple images in parallel
-- `filter_detections_by_image_count()`: Quality filtering
 
 ### matching.py
 
@@ -188,8 +166,7 @@ Serialization and deserialization:
 Centralized caching utilities:
 
 - `save_to_cache()`: Save intermediate results to pickle
-- `load_from_cache()`: Load cached results with invalidation checks
-- `clear_cache()`: Utility to clean cache directory
+- `load_from_cache()`: Load cached results with validation
 
 ## Configuration Reference
 
@@ -203,59 +180,3 @@ See `config.yaml` for full parameter documentation. Key sections:
 - **visualization**: Plot output configuration
 - **export**: Result export format
 
-## Testing
-
-Run unit tests:
-
-```bash
-pytest tests/test_calibration.py -v
-```
-
-## Comparison with Original Notebook
-
-| Aspect | Original | Refactored |
-|--------|----------|------------|
-| **Lines of code** | ~1500 | ~300 (notebook) + ~1500 (utils) |
-| **Cell count** | 41 | 15 |
-| **Modularity** | Monolithic cells | Reusable modules |
-| **Configuration** | Hardcoded | YAML file |
-| **Parallel processing** | No | Yes |
-| **Caching** | No | Yes |
-| **Visualization control** | Manual | Configurable modes |
-| **Type safety** | Dict-based | Dataclasses |
-| **Documentation** | Minimal | Comprehensive |
-| **Testability** | Difficult | Unit tests included |
-
-## Migration from Original Notebook
-
-If you have existing code using the old `cam` dictionary structure:
-
-```python
-# Old way
-K_left = cam["K"][LEFT]
-dist_left = cam["dist"][LEFT]
-
-# New way
-from calibration.utils import CameraIndex
-K_left = rig.left.K
-dist_left = rig.left.dist
-# Or: rig.get_camera(CameraIndex.LEFT).K
-```
-
-## Troubleshooting
-
-**Import errors**: Ensure you're running from project root or have added calibration to Python path.
-
-**Detection finds no boards**: Check pattern_sizes in config.yaml match your physical chessboard.
-
-**RANSAC takes too long**: Reduce `ransac_iterations` or `max_diverse_samples` in config.
-
-**Out of memory**: Reduce `num_workers` or disable parallel processing.
-
-## Citation
-
-If you use this calibration pipeline in your research, please cite the original OpenCV calibration work and this refactored implementation.
-
-## License
-
-Same as parent project.
