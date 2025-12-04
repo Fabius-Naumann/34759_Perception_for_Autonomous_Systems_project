@@ -585,3 +585,66 @@ def visualize_stereo_matches(
             output_path=output_dir / vis_filename,
             mode=vis_mode,
         )
+
+
+def plot_all_imgpoints_overlay(
+    imgpoints_left: list[np.ndarray],
+    imgpoints_right: list[np.ndarray],
+    image_size: tuple[int, int],
+    output_path: Path | None = None,
+    mode: str = "save",
+    figsize: tuple[int, int] = (8, 6),
+) -> None:
+    """
+    Scatter all detected image points from left and right cameras in one overlay plot.
+
+    Left points are drawn in blue, right points in red. Useful to visually spot
+    mismatches or systematic offsets between the two views.
+
+    Args:
+        imgpoints_left: List of left image point arrays (Nx2 per board flattened as in OpenCV)
+        imgpoints_right: List of right image point arrays
+        image_size: (width, height) of images
+        output_path: Path to save the figure
+        mode: 'show', 'save', or 'both'
+        figsize: Figure size
+    """
+    if not imgpoints_left and not imgpoints_right:
+        print("No image points provided for overlay plot")
+        return
+
+    w, h = image_size
+
+    xs_L = []
+    ys_L = []
+    xs_R = []
+    ys_R = []
+
+    # Process all left points
+    for ptsL in imgpoints_left:
+        if ptsL is not None:
+            pL = ptsL.reshape(-1, 2)
+            xs_L.extend(pL[:, 0].tolist())
+            ys_L.extend(pL[:, 1].tolist())
+
+    # Process all right points
+    for ptsR in imgpoints_right:
+        if ptsR is not None:
+            pR = ptsR.reshape(-1, 2)
+            xs_R.extend(pR[:, 0].tolist())
+            ys_R.extend(pR[:, 1].tolist())
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.scatter(xs_L, ys_L, s=6, c="tab:blue", alpha=0.6, label="Left")
+    ax.scatter(xs_R, ys_R, s=6, c="tab:red", alpha=0.6, label="Right")
+    ax.set_xlim(0, w)
+    ax.set_ylim(h, 0)
+    ax.set_aspect("equal")
+    ax.set_title("All Image Points Overlay (Left vs Right)")
+    ax.set_xlabel("X (pixels)")
+    ax.set_ylabel("Y (pixels)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right")
+    plt.tight_layout()
+
+    _handle_figure_output(fig, output_path, mode)

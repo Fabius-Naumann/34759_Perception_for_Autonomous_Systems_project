@@ -6,4 +6,5 @@ intrinsic_camera_calibrator/*
 calibration/cache/*
 local/*
 *cpython-*
-__pycache__/
+__pycache__/*
+data/*

@@ -11,6 +11,7 @@ from .calibration_robust import (
     calibrate_intrinsics_robust,
     calibrate_stereo,
     calibrate_stereo_robust,
+    compute_stereo_errors,
     subsample_stereo_pairs,
 )
 from .data_structures import (
@@ -27,6 +28,7 @@ from .matching import (
     match_chessboards,
 )
 from .visualization import (
+    plot_all_imgpoints_overlay,
     plot_imagepoints_heatmap,
     plot_matched_boards,
     plot_rectification_preview,
@@ -53,8 +55,10 @@ __all__ = [
     "calibrate_intrinsics_robust",
     "calibrate_stereo",
     "calibrate_stereo_robust",
+    "compute_stereo_errors",
     "subsample_stereo_pairs",
     # Visualization
+    "plot_all_imgpoints_overlay",
     "plot_imagepoints_heatmap",
     "plot_matched_boards",
     "plot_rectification_preview",

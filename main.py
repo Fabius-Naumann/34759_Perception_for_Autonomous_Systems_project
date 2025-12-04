@@ -1,31 +1,50 @@
 import os
+from pathlib import Path
+
 import cv2
 import numpy as np
 import torch
+import yaml
 from PIL import Image
 
-from Detection_Tracking.tracking import TrackManager, draw_tracks
-from Detection_Tracking.detection import (
-    detect_moving_objects,
-    draw_movement_mask,
-    draw_optical_flow,
-    draw_detections,
-)
 from Classification.Model import ResNet
 from Classification.Train import prediction
+from Detection_Tracking.detection import (
+    detect_moving_objects,
+    draw_detections,
+    draw_movement_mask,
+    draw_optical_flow,
+)
+from Detection_Tracking.tracking import TrackManager, draw_tracks
 
 # ================ INPUTS ================
 SEQ = "seq1"  # use a stereo sequence: *_image_02 & *_image_03
+use_own_calib = False
 
 # You can generate the input videos from the dataset using the ./utils/images2video.py script
-LEFT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_02_video.mp4"
-RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03_video.mp4"
-out_dir = f"./Detection_Tracking/out/{SEQ}/"
-bbox_log_path = os.path.join(out_dir, "bounding_boxes.txt")
+cal_string = "_own_calib" if use_own_calib else ""
+LEFT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_02{cal_string}_calib.mp4"
+RIGHT_VIDEO = f"./Detection_Tracking/inputs/{SEQ}_image_03{cal_string}_calib.mp4"
+cal_string = "own_calib/" if use_own_calib else ""
+out_dir = Path(f"./Detection_Tracking/out/{cal_string}{SEQ}/")
+Path.mkdir(out_dir, parents=True, exist_ok=True)
+bbox_log_path = out_dir / "bounding_boxes.txt"
 
 # Calibration
-f = 707.0493  # pixels
-B = 0.4727  # meters
+if use_own_calib:
+    calibration_path = Path(__file__).parent / "calibration" / "results" / "stereo_calibration.yaml"
+    with Path.open(calibration_path, "r") as file:
+        calib = yaml.safe_load(file)
+
+    P1 = np.array(calib["left"]["P"])
+    P2 = np.array(calib["right"]["P"])
+
+    f = P1[0, 0]  # focal length in pixels
+    B = abs(P2[0, 3] - P1[0, 3]) / f  # baseline in meters
+else:
+    f = 707.0493  # pixels
+    B = 0.4727  # meters
+
 MAX_DEPTH = 80.0  # max depth we trust in meters
 
 # ========================================
@@ -43,6 +62,7 @@ model_cls.eval()
 
 # Class names corresponding to your prediction() implementation
 CLASS_NAMES = ["bicycle", "car", "person"]  # not strictly needed if prediction returns strings
+
 
 # Simple image-to-tensor helper (no heavy transforms)
 def crop_detection_to_tensor(frame_bgr, det):
@@ -87,9 +107,7 @@ capR = cv2.VideoCapture(RIGHT_VIDEO)
 retL, frameL1 = capL.read()
 retR, frameR1 = capR.read()
 if not (retL and retR):
-    raise RuntimeError(
-        f"Cannot read first stereo frames from {LEFT_VIDEO} and {RIGHT_VIDEO}"
-    )
+    raise RuntimeError(f"Cannot read first stereo frames from {LEFT_VIDEO} and {RIGHT_VIDEO}")
 
 # We'll do detection + tracking on the RIGHT camera
 frame1 = frameR1.copy()
@@ -106,21 +124,11 @@ os.makedirs(out_dir, exist_ok=True)
 
 fourcc = cv2.VideoWriter_fourcc(*"XVID")
 
-out_boxes = cv2.VideoWriter(
-    os.path.join(out_dir, "people_boxes.avi"), fourcc, fps, (w, h)
-)
-out_flow = cv2.VideoWriter(
-    os.path.join(out_dir, "people_flow.avi"), fourcc, fps, (w, h)
-)
-out_det = cv2.VideoWriter(
-    os.path.join(out_dir, "people_detection.avi"), fourcc, fps, (w, h)
-)
-out_tracks = cv2.VideoWriter(
-    os.path.join(out_dir, "people_tracks.avi"), fourcc, fps, (w, h)
-)
-out_depth = cv2.VideoWriter(
-    os.path.join(out_dir, "people_depth.avi"), fourcc, fps, (w, h)
-)
+out_boxes = cv2.VideoWriter(os.path.join(out_dir, "people_boxes.avi"), fourcc, fps, (w, h))
+out_flow = cv2.VideoWriter(os.path.join(out_dir, "people_flow.avi"), fourcc, fps, (w, h))
+out_det = cv2.VideoWriter(os.path.join(out_dir, "people_detection.avi"), fourcc, fps, (w, h))
+out_tracks = cv2.VideoWriter(os.path.join(out_dir, "people_tracks.avi"), fourcc, fps, (w, h))
+out_depth = cv2.VideoWriter(os.path.join(out_dir, "people_depth.avi"), fourcc, fps, (w, h))
 
 # ---------------- Stereo SGBM + calibration (KITTI) ----------------
 min_disp = 10
@@ -291,15 +299,12 @@ while True:
         bbox_log.write(
             f"{frame_count},-1,{det['class_name']},{det['x']},{det['y']},{det['w']},{det['h']},{det['depth']:.3f}\n"
         )
-    
+
     # ---- Save track bounding boxes as well ----
     for tr in tracker.tracks:
         if hasattr(tr, "bbox") and tr.bbox is not None:
             x, y, w_box, h_box = tr.bbox
-            bbox_log.write(
-                f"{frame_count},{tr.id},{tr.class_name},{x},{y},{w_box},{h_box},{tr.z:.3f}\n"
-            )
-
+            bbox_log.write(f"{frame_count},{tr.id},{tr.class_name},{x},{y},{w_box},{h_box},{tr.z:.3f}\n")
 
     # Prepare next frame (right camera)
     gray1 = gray2.copy()

@@ -21,6 +21,44 @@ except ImportError:
         return it
 
 
+def _preprocess_image(
+    gray: np.ndarray,
+    use_clahe: bool = False,
+    clahe_clip_limit: float = 2.0,
+    clahe_tile_size: int = 8,
+    use_bilateral: bool = False,
+    bilateral_d: int = 9,
+    bilateral_sigma_color: float = 75.0,
+    bilateral_sigma_space: float = 75.0,
+) -> np.ndarray:
+    """
+    Apply optional preprocessing to improve detection in challenging conditions.
+
+    Args:
+        gray: Input grayscale image
+        use_clahe: Apply CLAHE for contrast enhancement
+        clahe_clip_limit: Contrast limiting threshold for CLAHE
+        clahe_tile_size: Tile size for CLAHE grid
+        use_bilateral: Apply bilateral filtering for noise reduction
+        bilateral_d: Diameter of pixel neighborhood for bilateral filter
+        bilateral_sigma_color: Filter sigma in color space
+        bilateral_sigma_space: Filter sigma in coordinate space
+
+    Returns:
+        Preprocessed grayscale image
+    """
+    processed = gray.copy()
+
+    if use_clahe:
+        clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(clahe_tile_size, clahe_tile_size))
+        processed = clahe.apply(processed)
+
+    if use_bilateral:
+        processed = cv2.bilateralFilter(processed, bilateral_d, bilateral_sigma_color, bilateral_sigma_space)
+
+    return processed
+
+
 def find_all_chessboards(
     gray: np.ndarray,
     pattern_sizes: list[tuple[int, int]],
@@ -28,6 +66,13 @@ def find_all_chessboards(
     subpixel_window_scale: float = 0.25,
     subpixel_iterations: int = 30,
     subpixel_epsilon: float = 0.001,
+    use_clahe: bool = False,
+    clahe_clip_limit: float = 2.0,
+    clahe_tile_size: int = 8,
+    use_bilateral: bool = False,
+    bilateral_d: int = 9,
+    bilateral_sigma_color: float = 75.0,
+    bilateral_sigma_space: float = 75.0,
 ) -> tuple[list[np.ndarray], list[np.ndarray], list[tuple[int, int]]]:
     """
     Detect multiple chessboards of different sizes in a single image.
@@ -43,6 +88,13 @@ def find_all_chessboards(
         subpixel_window_scale: Window size for cornerSubPix as fraction of square size
         subpixel_iterations: Max iterations for cornerSubPix
         subpixel_epsilon: Epsilon for cornerSubPix termination
+        use_clahe: Apply CLAHE preprocessing for better contrast
+        clahe_clip_limit: Contrast limiting threshold for CLAHE
+        clahe_tile_size: Tile size for CLAHE grid
+        use_bilateral: Apply bilateral filtering for noise reduction
+        bilateral_d: Diameter of pixel neighborhood for bilateral filter
+        bilateral_sigma_color: Filter sigma in color space
+        bilateral_sigma_space: Filter sigma in coordinate space
 
     Returns:
         Tuple of (corners_list, objpoints_list, pattern_sizes_list) where:
@@ -50,10 +102,22 @@ def find_all_chessboards(
         - objpoints_list: List of corresponding 3D object points (Nx3 float32)
         - pattern_sizes_list: List of pattern sizes for each detection
     """
+    # Apply preprocessing if requested
+    preprocessed = _preprocess_image(
+        gray,
+        use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_tile_size=clahe_tile_size,
+        use_bilateral=use_bilateral,
+        bilateral_d=bilateral_d,
+        bilateral_sigma_color=bilateral_sigma_color,
+        bilateral_sigma_space=bilateral_sigma_space,
+    )
+
     all_corners = []
     all_objp = []
     all_pattern_sizes = []
-    work = gray.copy()
+    work = preprocessed.copy()
 
     flags_normal = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK
     flags_SB = cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_ACCURACY
@@ -97,6 +161,10 @@ def find_all_chessboards(
                 corners = cv2.cornerSubPix(gray, corners, win, (-1, -1), term)
                 corners_ref = corners
 
+            # vis = cv2.drawChessboardCorners(work.copy(), (nb_vert, nb_horiz), corners, ret)
+            # cv2.imshow("Corners", vis)
+            # cv2.waitKey(100)
+
             all_corners.append(corners_ref)
 
             # Mask out detected board region to find next board
@@ -114,19 +182,21 @@ def _detect_single_image(args: tuple[Any, ...]) -> dict[str, Any]:
     Worker function for parallel chessboard detection.
 
     Args:
-        args: Tuple of (image_path, img_idx, pattern_sizes, max_boards, subpixel_params)
+        args: Tuple of (image_path, img_idx, pattern_sizes, max_boards, subpixel_params, preprocess_params)
 
     Returns:
         Dictionary with detection results
     """
-    image_path, img_idx, pattern_sizes, max_boards, subpixel_params = args
+    image_path, img_idx, pattern_sizes, max_boards, subpixel_params, preprocess_params = args
 
     img = cv2.imread(str(image_path))
     if img is None:
         return {"img_idx": img_idx, "success": False, "corners": [], "objpoints": [], "sizes": []}
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    corners, objps, sizes = find_all_chessboards(gray, pattern_sizes, max_boards, **subpixel_params)
+    corners, objps, sizes = find_all_chessboards(
+        gray, pattern_sizes, max_boards, **subpixel_params, **preprocess_params
+    )
 
     return {
         "img_idx": img_idx,
@@ -147,7 +217,15 @@ def detect_chessboards_parallel(
     subpixel_window_scale: float = 0.25,
     subpixel_iterations: int = 30,
     subpixel_epsilon: float = 0.001,
+    use_clahe: bool = False,
+    clahe_clip_limit: float = 2.0,
+    clahe_tile_size: int = 8,
+    use_bilateral: bool = False,
+    bilateral_d: int = 9,
+    bilateral_sigma_color: float = 75.0,
+    bilateral_sigma_space: float = 75.0,
     cache_dir: Path | None = None,
+    **args,
 ) -> tuple[list[list[np.ndarray]], list[list[np.ndarray]], list[list[int]], tuple[int, int] | None]:
     """
     Detect chessboards in multiple images using parallel processing with optional caching.
@@ -161,6 +239,13 @@ def detect_chessboards_parallel(
         subpixel_window_scale: Window scale for cornerSubPix
         subpixel_iterations: Max iterations for subpixel refinement
         subpixel_epsilon: Epsilon for subpixel termination
+        use_clahe: Apply CLAHE preprocessing for better contrast
+        clahe_clip_limit: Contrast limiting threshold for CLAHE
+        clahe_tile_size: Tile size for CLAHE grid
+        use_bilateral: Apply bilateral filtering for noise reduction
+        bilateral_d: Diameter of pixel neighborhood for bilateral filter
+        bilateral_sigma_color: Filter sigma in color space
+        bilateral_sigma_space: Filter sigma in coordinate space
         cache_dir: Optional directory for caching detection results
 
     Returns:
@@ -173,7 +258,22 @@ def detect_chessboards_parallel(
     # Check cache
     if cache_dir is not None:
         from .cache import load_from_cache
-        cache_key = _compute_detection_cache_key(image_paths, pattern_sizes, max_boards)
+
+        cache_key = _compute_detection_cache_key(
+            image_paths,
+            pattern_sizes,
+            max_boards,
+            subpixel_window_scale,
+            subpixel_iterations,
+            subpixel_epsilon,
+            use_clahe,
+            clahe_clip_limit,
+            clahe_tile_size,
+            use_bilateral,
+            bilateral_d,
+            bilateral_sigma_color,
+            bilateral_sigma_space,
+        )
         cached = load_from_cache(cache_dir, cache_key, "detection", progress=progress)
         if cached is not None:
             return cached["corners"], cached["objpoints"], cached["indices"], cached["image_size"]
@@ -184,8 +284,21 @@ def detect_chessboards_parallel(
         "subpixel_epsilon": subpixel_epsilon,
     }
 
+    preprocess_params = {
+        "use_clahe": use_clahe,
+        "clahe_clip_limit": clahe_clip_limit,
+        "clahe_tile_size": clahe_tile_size,
+        "use_bilateral": use_bilateral,
+        "bilateral_d": bilateral_d,
+        "bilateral_sigma_color": bilateral_sigma_color,
+        "bilateral_sigma_space": bilateral_sigma_space,
+    }
+
     # Prepare arguments for workers
-    args_list = [(path, idx, pattern_sizes, max_boards, subpixel_params) for idx, path in enumerate(image_paths)]
+    args_list = [
+        (path, idx, pattern_sizes, max_boards, subpixel_params, preprocess_params)
+        for idx, path in enumerate(image_paths)
+    ]
 
     if num_workers == -1:
         num_workers = mp.cpu_count()
@@ -222,6 +335,7 @@ def detect_chessboards_parallel(
     # Save to cache
     if cache_dir is not None:
         from .cache import save_to_cache
+
         cache_data = {
             "corners": all_corners,
             "objpoints": all_objpoints,
@@ -234,7 +348,19 @@ def detect_chessboards_parallel(
 
 
 def _compute_detection_cache_key(
-    image_paths: list[str | Path], pattern_sizes: list[tuple[int, int]], max_boards: int
+    image_paths: list[str | Path],
+    pattern_sizes: list[tuple[int, int]],
+    max_boards: int,
+    subpixel_window_scale: float,
+    subpixel_iterations: int,
+    subpixel_epsilon: float,
+    use_clahe: bool,
+    clahe_clip_limit: float,
+    clahe_tile_size: int,
+    use_bilateral: bool,
+    bilateral_d: int,
+    bilateral_sigma_color: float,
+    bilateral_sigma_space: float,
 ) -> str:
     """Compute cache key for detection results based on image paths and parameters."""
     h = hashlib.md5()
@@ -248,6 +374,18 @@ def _compute_detection_cache_key(
             pass
     h.update(str(sorted(pattern_sizes)).encode())
     h.update(str(max_boards).encode())
+    # Include subpixel refinement parameters
+    h.update(str(subpixel_window_scale).encode())
+    h.update(str(subpixel_iterations).encode())
+    h.update(str(subpixel_epsilon).encode())
+    # Include preprocessing parameters
+    h.update(str(use_clahe).encode())
+    h.update(str(clahe_clip_limit).encode())
+    h.update(str(clahe_tile_size).encode())
+    h.update(str(use_bilateral).encode())
+    h.update(str(bilateral_d).encode())
+    h.update(str(bilateral_sigma_color).encode())
+    h.update(str(bilateral_sigma_space).encode())
     return h.hexdigest()
 
 

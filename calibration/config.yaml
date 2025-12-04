@@ -14,11 +14,20 @@ detection:
     - [11, 7]   # [nb_vertical, nb_horizontal]
     - [15, 5]
     - [7, 5]
-  max_boards_per_image: 13
+  max_boards: 13   # per image and pattern
   square_size_meters: 0.0995  # Physical size of chessboard squares
-  subpixel_window_scale: 0.25  # Fraction of square size for cornerSubPix
-  subpixel_iterations: 30
-  subpixel_epsilon: 0.001
+  subpixel_window_scale: 0.2  # Fraction of square size for cornerSubPix
+  subpixel_iterations: 100
+  subpixel_epsilon: 0.0001
+  
+  # Image preprocessing (helps with challenging lighting conditions)
+  use_clahe: false  # Apply CLAHE for contrast enhancement
+  clahe_clip_limit: 2  # Contrast limiting threshold
+  clahe_tile_size: 16  # Tile size for CLAHE grid
+  use_bilateral: false  # Apply bilateral filtering for noise reduction
+  bilateral_d: 9  # Diameter of pixel neighborhood
+  bilateral_sigma_color: 75.0  # Filter sigma in color space
+  bilateral_sigma_space: 75.0  # Filter sigma in coordinate space
   
   # Parallel processing
   parallel_enabled: true
@@ -38,10 +47,10 @@ robust_calibration:
   extrinsic_deduplicate: true
   extrinsic_angle_thresh_deg: 400
   extrinsic_translation_thresh: 0.12
-  extrinsic_keep_per_cluster: 2
+  extrinsic_keep_per_cluster: 3
   
   # Stage 3: Diversity subsampling for pose coverage
-  diversity_subsample: true
+  diversity_subsample: false
   max_diverse_samples: 120
   min_pose_angle_deg: 15.0
   min_pose_translation: 0.1
@@ -51,11 +60,11 @@ robust_calibration:
   
   # Stage 5: RANSAC calibration
   ransac_iterations: 200
-  subset_size: 6
+  subset_size: 8
   
   # Stage 6: Post-rejection tightening
   post_rejection: true
-  rms_threshold: null  # null means adaptive threshold
+  rms_threshold: 0.1  # null means adaptive threshold
   
   # Naive calibration settings
   naive_cal_max_samples: 50
@@ -70,17 +79,17 @@ matching:
   dy_thresh: 18.0  # Vertical gating threshold (pixels)
   scale_ratio_thresh: 0.25  # Relative height difference threshold
 
-# Stereo pair subsampling (diversity filtering before stereo calibration)
+# Stereo pair subsampling (extrinsic deduplication before stereo calibration)
 stereo_subsampling:
   enabled: true
-  max_pairs: 100  # Maximum stereo pairs to keep
-  min_angle_deg: 400.0  # Minimum pose angle difference (degrees)
-  min_translation: 0.8 # Minimum pose translation difference
+  angle_thresh_deg: 400  # Rotation angle threshold for clustering (degrees)
+  translation_thresh: 0.12  # Translation threshold as fraction of median distance
+  keep_per_cluster: 1  # Number of detections to keep per cluster
 
 # Stereo calibration parameters
 stereo:
   fix_intrinsic: true  # Use pre-calibrated intrinsics
-  max_iterations: 100
+  max_iterations: 200
   epsilon: 1.0e-5
   
   # Rectification
@@ -90,7 +99,7 @@ stereo:
 # Visualization parameters
 visualization:
   mode: "save"  # "show" or "save" or "both"
-  dpi: 150
+  dpi: 300
   figsize_single: [12, 5]
   figsize_stereo: [16, 7]
   figsize_heatmap: [36, 5]
@@ -111,3 +120,5 @@ export:
   include_metadata: true
   save_intermediate: true  # Save per-camera results before stereo
   output_filename: "stereo_calibration.yaml"
+
+use_frankenstein: true

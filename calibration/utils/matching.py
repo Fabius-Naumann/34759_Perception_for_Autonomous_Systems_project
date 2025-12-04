@@ -350,6 +350,9 @@ def build_stereo_pairs_from_detections(
     # Group detections by image index
     left_by_image = group_detections_by_image(corners_left, objpoints_left, indices_left)
     right_by_image = group_detections_by_image(corners_right, objpoints_right, indices_right)
+    objpoints_by_image_left: dict[int, list[np.ndarray]] = {}
+    for idx, objp in zip(indices_left, objpoints_left, strict=False):
+        objpoints_by_image_left.setdefault(idx, []).append(objp)
 
     # Match boards across stereo pairs
     stereo_objpoints = []
@@ -410,10 +413,14 @@ def build_stereo_pairs_from_detections(
             if cornersL.shape[0] != expected_corners or cornersR.shape[0] != expected_corners:
                 continue
 
-            # Create object points (we can use the objpoints from detection, but regenerate for consistency)
-            objp = np.zeros((expected_corners, 3), np.float32)
-            objp[:, :2] = np.mgrid[0:nb_vert, 0:nb_horiz].T.reshape(-1, 2)
-            # Note: square_size scaling should be done by the caller if needed
+            # pick the objpoints that corresponds to detection iL in this image.
+            # rely on group_detections_by_image preserving the same order as objpoints_by_image_left[img_idx]
+            try:
+                objp_list = objpoints_by_image_left[img_idx]
+                objp = objp_list[iL].copy()  # <-- make a copy to avoid shared references
+            except (KeyError, IndexError):
+                # fallback: keep original behaviour but still copy to avoid mutation
+                objp = objpoints_left[indices_left.index(img_idx)].copy()
 
             stereo_objpoints.append(objp)
             stereo_imgpoints_left.append(cornersL.astype(np.float32))

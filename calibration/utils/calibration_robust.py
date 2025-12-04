@@ -327,7 +327,20 @@ def calibrate_intrinsics_robust(
     if cache_dir is not None:
         from .cache import load_from_cache
 
-        cache_key = _compute_cache_key(objpoints_list, imgpoints_list, image_size)
+        cache_key = _compute_cache_key(
+            objpoints_list,
+            imgpoints_list,
+            image_size,
+            enable_stage0,
+            stage0_min_per_image,
+            deduplicate,
+            hash_precision,
+            ransac_iterations,
+            subset_size,
+            post_rejection,
+            rms_threshold,
+            naive_cal_max_samples,
+        )
         cached_result = load_from_cache(cache_dir, cache_key, "intrinsic", progress=False)
         if cached_result is not None:
             if verbose:
@@ -551,45 +564,56 @@ def subsample_stereo_pairs(
     K_left: np.ndarray,
     dist_left: np.ndarray,
     max_pairs: int = 100,
-    min_angle_deg: float = 10.0,
-    min_translation: float = 0.05,
+    angle_thresh_deg: float = 0.5,
+    translation_thresh: float = 0.02,
+    keep_per_cluster: int = 1,
     verbose: bool = True,
 ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[int]]:
     """
-    Subsample stereo pairs for diversity in left camera pose.
+    Subsample stereo pairs using extrinsic deduplication.
 
-    Uses the left camera poses to determine diversity, keeping pairs that
-    provide good geometric coverage for stereo calibration.
+    Clusters stereo pairs by left camera pose similarity and keeps the best
+    from each cluster, ensuring geometric diversity for stereo calibration.
 
     Args:
         objpoints, imgpoints_left, imgpoints_right: Stereo detection data
         K_left, dist_left: Left camera calibration
-        max_pairs: Maximum number of pairs to keep
-        min_angle_deg: Minimum rotation angle difference (degrees)
-        min_translation: Minimum translation difference
+        max_pairs: Maximum number of pairs to keep (unused, kept for compatibility)
+        angle_thresh_deg: Rotation angle threshold for clustering (degrees)
+        translation_thresh: Translation threshold as fraction of median distance
+        keep_per_cluster: Number of detections to keep per cluster
         verbose: Print progress information
 
     Returns:
         Filtered (objpoints, imgpoints_left, imgpoints_right, kept_indices)
     """
-    if len(objpoints) <= max_pairs:
-        if verbose:
-            print(f"Stereo pairs ({len(objpoints)}) <= max_pairs ({max_pairs}), no subsampling needed")
-        return objpoints, imgpoints_left, imgpoints_right, list(range(len(objpoints)))
+    if len(objpoints) == 0:
+        return objpoints, imgpoints_left, imgpoints_right, []
 
-    # Compute poses for left camera
-    poses = _pose_vectors(K_left, dist_left, objpoints, imgpoints_left)
+    # Compute reprojection errors for ranking
+    errors = _errors_with_model(K_left, dist_left, objpoints, imgpoints_left, progress=False)
 
-    # Select diverse subset
-    selected_indices = _diversity_subsample(poses, max_pairs, min_angle_deg, min_translation, order="sequential")
+    # Use extrinsic deduplication to cluster by pose similarity
+    selected_indices = _extrinsic_deduplicate(
+        K_left,
+        dist_left,
+        objpoints,
+        imgpoints_left,
+        errors,
+        angle_thresh_deg=angle_thresh_deg,
+        translation_thresh=translation_thresh,
+        keep_per_cluster=keep_per_cluster,
+    )
 
     obj_sub = [objpoints[i] for i in selected_indices]
     img_L_sub = [imgpoints_left[i] for i in selected_indices]
     img_R_sub = [imgpoints_right[i] for i in selected_indices]
 
     if verbose:
-        print(f"Stereo diversity subsampling: {len(objpoints)} → {len(selected_indices)} pairs")
-        print(f"  Criteria: min_angle={min_angle_deg}°, min_translation={min_translation}")
+        print(f"Stereo extrinsic deduplication: {len(objpoints)} → {len(selected_indices)} pairs")
+        print(
+            f"  Criteria: angle_thresh={angle_thresh_deg}°, translation_thresh={translation_thresh}, keep_per_cluster={keep_per_cluster}"
+        )
 
     return obj_sub, img_L_sub, img_R_sub, selected_indices
 
@@ -605,6 +629,8 @@ def calibrate_stereo(
     epsilon: float = 1e-5,
     rectify_alpha: float = 0.2,
     zero_disparity: bool = True,
+    r_mat: np.ndarray = None,
+    t_vec: np.ndarray = None,
     verbose: bool = True,
 ) -> StereoRig:
     """
@@ -628,11 +654,13 @@ def calibrate_stereo(
     """
     criteria = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, max_iterations, epsilon)
     flags = cv2.CALIB_FIX_INTRINSIC if fix_intrinsic else 0
+    if r_mat is not None or t_vec is not None:
+        flags |= cv2.CALIB_USE_EXTRINSIC_GUESS
 
     if verbose:
         print(f"Stereo calibration with {len(objpoints)} board pairs...")
 
-    rms, K1, d1, K2, d2, R, T, E, F = cv2.stereoCalibrate(
+    rms, K1, d1, K2, d2, R, T, E, F, _, _, _ = cv2.stereoCalibrateExtended(
         objpoints,
         imgpoints_left,
         imgpoints_right,
@@ -642,6 +670,8 @@ def calibrate_stereo(
         rig.right.dist,
         image_size,
         criteria=criteria,
+        R=r_mat.copy() if r_mat is not None else None,
+        T=t_vec.copy() if t_vec is not None else None,
         flags=flags,
     )
 
@@ -693,7 +723,7 @@ def calibrate_stereo(
     return rig
 
 
-def _compute_stereo_errors(
+def compute_stereo_errors(
     objpoints: list[np.ndarray],
     imgpoints_left: list[np.ndarray],
     imgpoints_right: list[np.ndarray],
@@ -752,6 +782,8 @@ def calibrate_stereo_robust(
     epsilon: float = 1e-5,
     rectify_alpha: float = 0.2,
     zero_disparity: bool = True,
+    r_mat: np.ndarray = None,
+    t_vec: np.ndarray = None,
     verbose: bool = True,
 ) -> tuple[StereoRig, list[int]]:
     """
@@ -820,6 +852,8 @@ def calibrate_stereo_robust(
                 epsilon=epsilon,
                 rectify_alpha=rectify_alpha,
                 zero_disparity=zero_disparity,
+                r_mat=r_mat,
+                t_vec=t_vec,
                 verbose=False,
             )
         except cv2.error:
@@ -828,7 +862,7 @@ def calibrate_stereo_robust(
         # Evaluate on ALL data
         # Note: calibrate_stereo computes RMS on the training set (subset).
         # We want RMS on the full set to check generalization/robustness.
-        all_errors = _compute_stereo_errors(
+        all_errors = compute_stereo_errors(
             objpoints,
             imgpoints_left,
             imgpoints_right,
@@ -867,14 +901,37 @@ def calibrate_stereo_robust(
 # -------------------------
 
 
-def _compute_cache_key(objpoints: list[np.ndarray], imgpoints: list[np.ndarray], image_size: tuple[int, int]) -> str:
-    """Compute MD5 hash for caching calibration results."""
+def _compute_cache_key(
+    objpoints: list[np.ndarray],
+    imgpoints: list[np.ndarray],
+    image_size: tuple[int, int],
+    enable_stage0: bool,
+    stage0_min_per_image: int,
+    deduplicate: bool,
+    hash_precision: int,
+    ransac_iterations: int,
+    subset_size: int,
+    post_rejection: bool,
+    rms_threshold: float | None,
+    naive_cal_max_samples: int,
+) -> str:
+    """Compute MD5 hash for caching calibration results including all parameters."""
     data = {
         "objpoints_shapes": [o.shape for o in objpoints],
         "imgpoints_shapes": [i.shape for i in imgpoints],
         "image_size": image_size,
         "objpoints_hash": hashlib.md5(b"".join(o.tobytes() for o in objpoints)).hexdigest(),
         "imgpoints_hash": hashlib.md5(b"".join(i.tobytes() for i in imgpoints)).hexdigest(),
+        # Include all calibration parameters that affect the output
+        "enable_stage0": enable_stage0,
+        "stage0_min_per_image": stage0_min_per_image,
+        "deduplicate": deduplicate,
+        "hash_precision": hash_precision,
+        "ransac_iterations": ransac_iterations,
+        "subset_size": subset_size,
+        "post_rejection": post_rejection,
+        "rms_threshold": rms_threshold,
+        "naive_cal_max_samples": naive_cal_max_samples,
     }
     key_str = json.dumps(data, sort_keys=True)
     return hashlib.md5(key_str.encode()).hexdigest()

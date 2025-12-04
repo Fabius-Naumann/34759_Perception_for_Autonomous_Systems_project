@@ -325,6 +325,7 @@ def load_kitti_calibration(input_path: Path | str) -> StereoRig:
         # Fallback to raw translations
         rig.T = t_03 - t_02
         rig.baseline = np.linalg.norm(rig.T)
+        rig.R = np.eye(3)
 
     print(f"KITTI calibration loaded from {input_path}")
     return rig

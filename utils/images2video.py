@@ -1,9 +1,12 @@
 import os
+from datetime import datetime
+from pathlib import Path
+
 import cv2
 import numpy as np
-from datetime import datetime
 
 # Find the Entry point at the bottom for usage details.
+
 
 # ------------------------------------------------------------
 # Helper: Parse KITTI timestamps (nanoseconds → microseconds)
@@ -12,11 +15,11 @@ def parse_kitti_timestamp(t_str):
     """
     Converts KITTI timestamp format:
     '2011-09-28 12:50:02.009517056'
-    
+
     Into a Python datetime (microseconds only).
     """
     date, time = t_str.split(" ")
-    
+
     # Split seconds + nanoseconds
     if "." in time:
         sec, fraction = time.split(".")
@@ -24,7 +27,7 @@ def parse_kitti_timestamp(t_str):
     else:
         sec = time
         micro = "000000"
-    
+
     # Build string suitable for datetime
     fixed = f"{date} {sec}.{micro}"
     return datetime.strptime(fixed, "%Y-%m-%d %H:%M:%S.%f")
@@ -36,7 +39,7 @@ def parse_kitti_timestamp(t_str):
 def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
     """
     Reads PNG images and KITTI timestamps, builds a video.
-    
+
     root_dir:
         Expects structure:
             image_02/
@@ -47,10 +50,7 @@ def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
     ts_path = os.path.join(root_dir, "timestamps.txt")
 
     # ------------------- Load image files -------------------
-    frames = sorted([
-        f for f in os.listdir(data_dir)
-        if f.lower().endswith(".png")
-    ])
+    frames = sorted([f for f in os.listdir(data_dir) if f.lower().endswith(".png")])
     if not frames:
         raise RuntimeError(f"No PNG images found inside {data_dir}")
 
@@ -59,7 +59,7 @@ def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
     # ------------------- Load KITTI timestamps -------------------
     timestamps = None
     if os.path.exists(ts_path):
-        with open(ts_path, "r") as f:
+        with open(ts_path) as f:
             lines = [l.strip() for l in f.readlines() if l.strip()]
 
         try:
@@ -67,8 +67,7 @@ def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
 
             if len(dt_list) == len(frame_paths):
                 t0 = dt_list[0]
-                timestamps = np.array([(dt - t0).total_seconds()
-                                       for dt in dt_list])
+                timestamps = np.array([(dt - t0).total_seconds() for dt in dt_list])
             else:
                 print("Warning: timestamp count mismatch. Using default FPS.")
         except Exception as e:
@@ -122,9 +121,9 @@ def images_and_timestamps_to_video(root_dir, output_path, default_fps=30.0):
 # Entry point
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    DATASET_DIR = "C:\\Users\\roger\\OneDrive\\Documentos\\06_Uni 6\\Perception\\Final project\\34759_final_project_rect\\"
+    DATASET_DIR = Path(__file__).parent.parent / "data" / "rectified"
     images_and_timestamps_to_video(
-        root_dir=os.path.join(DATASET_DIR, "seq_03\\image_02"),
-        output_path=os.path.join(DATASET_DIR, "seq_03\\seq3_image_02_video.mp4"),
-        default_fps=30.0
+        root_dir=DATASET_DIR / "seq_01" / "image_02",
+        output_path=DATASET_DIR / "seq1_image_02_video_own_calib.mp4",
+        default_fps=30.0,
     )
